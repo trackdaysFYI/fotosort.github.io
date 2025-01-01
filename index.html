@@ -472,9 +472,8 @@
       sessionNameInputElement.value = "";
       sessionNameInputElement.disabled = false;
       uploadStatusTextElement.textContent = `${selectedFiles.length} Photos Selected`;
-      
-      console.log(selectedFiles)
-      const minPhotos = 2;  // todo 50
+
+      const minPhotos = 50;
       if ((selectedFiles.length >= minPhotos) && (selectedFiles.length <= maxPhotos)) {
         uploadButtonElement.disabled = false;
       } else {
