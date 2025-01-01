@@ -1,0 +1,782 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Organize and Sort Motorcycle Trackday Photos">
+  <title>FotoSort - Organize Trackday Photos</title>
+  <link rel="icon" href="favicon.ico" type="image/x-icon">
+
+  <style>
+    @font-face {
+      font-family: "FunnelSans";
+      src: url("fonts/FunnelSans-Regular.ttf");
+    }
+
+    * {
+      font-family: "FunnelSans", sans-serif;
+    }
+
+    html {
+      overflow-y: scroll;
+    }
+
+    body {
+      margin: 0;
+      background-image: linear-gradient(to bottom, white, lightgray);
+      background-attachment: fixed;
+    }
+
+    main {
+      max-width: 750px;
+      margin: 0 auto;
+      padding: 20px 35px;
+      background-color: white;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      border-radius: 8px;
+    }
+    footer {
+      margin: 8px;
+      text-align: center;
+    }
+
+    .logo-link {
+      color: black;
+      display: inline-flex;
+      align-items: center;
+      text-decoration: none;
+      gap: 3px;
+    }
+
+    .logo {
+      font-size: 36px;
+      display: flex;
+      justify-content: center;
+    }
+
+    #console-content {
+      text-align: center;
+    }
+
+    #upload-area {
+      height: 120px;
+      background-color: #f9f9f9;
+      border: 2px dashed gainsboro;
+      border-radius: 8px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      transition: background-color 0.15s, border-color 0.15s;
+    }
+    #upload-area.drag-over {
+      background-color: #e6f0ff;
+      border-color: #0047ab;
+      transition: background-color 0.45s, border-color 0.45s;
+    }
+    #upload-area.solid-border {
+      border: 2px solid gainsboro;
+    }
+
+    #upload-area button {
+      padding: 10px;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 15px;
+    }
+    #upload-area button:disabled {
+      background-color: dimgray;
+      cursor: not-allowed;
+    }
+
+    button.blue {background-color: dodgerblue;}
+    button.blue:hover {background-color: #0077ea;}
+    button.red {background-color: #dc3545;}
+    button.red:hover {background-color: #a71d2a;}
+    button.green {background-color: #28a745;}
+    button.green:hover {background-color: green;}
+
+    #browse-ui p {
+      margin: 0.25rem;
+    }
+
+    table#upload-ui {
+      width: 100%;
+      max-width: 500px;
+      border-spacing: 10px;
+    }
+
+    #upload-ui tbody {
+      width: 100%;
+      display: table;
+    }
+
+    #session-name-input {
+      width: 80%;
+      padding: 8px;
+      border: 1px solid lightgray;
+      border-radius: 5px;
+      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+      font-size: 17px;
+      text-align: center;
+    }
+    #session-name-input:focus {
+      border-color: deepskyblue;
+      outline: none;
+      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1), 0 0 5px rgba(0, 123, 255, 0.33);
+    }
+
+    #upload-status-text {
+      color: dimgray;
+      font-size: 17px;
+    }
+
+    #upload-ui button {
+      width: 100%;
+    }
+
+    #refresh-button {
+      padding: 7px;
+      border-radius: 50%;  /* circle */
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: background-color 0.3s ease, transform 0.2s ease;
+    }
+    #refresh-button:hover {
+      background-color: rgba(30, 144, 255, 0.15);
+      transform: scale(1.1);
+    }
+    #refresh-button:active {
+      background-color: rgba(30, 144, 255, 0.3);
+      transform: scale(1);
+    }
+    #refresh-button svg {
+      fill: dodgerblue;
+    }
+    #refresh-button:disabled svg{
+      fill: dimgray;
+    }
+    #refresh-button:disabled {
+      cursor: default;
+      animation: rotate 0.7s linear infinite;
+      background-color: transparent;
+    }
+    @keyframes rotate {
+      from {transform: rotate(0deg);}
+      to {transform: rotate(360deg);}
+    }
+
+    table#session-table {
+      width: 100%;
+      text-align: center;
+      font-size: 14px;
+      border: 1px solid gainsboro;
+      border-radius: 8px;
+      border-spacing: 0;
+      /* need border-spacing: 0 instead of border-collapse: collapse to display border radius*/
+    }
+
+    /* border radius fix */
+    table#session-table tr th:first-of-type {border-top-left-radius: 6px;}
+    table#session-table tr th:last-of-type {border-top-right-radius: 6px;}
+    table#session-table tr:last-of-type td:first-of-type {border-bottom-left-radius: 6px;}
+    table#session-table tr:last-of-type td:last-of-type {border-bottom-right-radius: 6px;}
+
+    #session-table th {
+      background-color: #f3f3f3;
+      color: #333;
+      padding: 10px 0px;
+      border-bottom: 1px solid #eee;
+    }
+
+    #session-table tr {
+      transition: background-color 0.3s;
+    }
+
+    #session-table tr.clickable:hover {
+      cursor: pointer;
+      background-color: rgba(30, 144, 255, 0.1);
+    }
+
+    #session-table td {
+      border-bottom: 1px solid #eee;
+    }
+
+    @media (max-width: 800px) {
+      #session-table thead {
+        display: none;
+      }
+
+      #session-table tr {
+        display: block;
+        margin-bottom: 12px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        border-radius: 8px;
+      }
+
+      #session-table td {
+        display: flex;
+        justify-content: space-between;
+        padding: 12px;
+        border: none;
+      }
+
+      #session-table td:before {
+        content: attr(data-label);
+        font-weight: bold;
+        color: #666;
+      }
+    }
+
+    button.unstyled {
+      background: none;
+      border: none;
+      padding: 3px;
+      cursor: pointer;
+    }
+
+    .dropdown {
+      position: relative;
+      display: inline-block;
+    }
+
+    .dropdown-menu {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      position: absolute;
+      top: -16px;
+      right: -92px;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      display: none;
+      z-index: 1000;
+    }
+
+    .dropdown-menu li {
+      padding: 8px 16px;
+    }
+
+    .dropdown-menu li:hover {
+      background-color: #f0f0f0;
+    }
+
+    .loading {
+      cursor: progress !important;
+    }
+
+    .center {
+      text-align: center;
+    }
+  </style>
+
+  <script>
+    function login() {
+      loginStatusElement.innerText = "";
+      const username = usernameInputElement.value;
+      if (!username) return;
+      loginButtonElement.disabled = true;
+      fetch(`https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com/authenticate?username=${username}`, {method: "POST"})
+        .then(response => {
+          if (response.ok) {
+            return response.json();
+          } else {
+            throw new Error(response.status);
+          }
+        })
+        .then(data => {
+          bearer = "Bearer " + data["token"];
+          maxPhotos = data["photoLimit"];
+          document.getElementById("login-menu").hidden = true;
+          document.getElementById("console-content").hidden = false;
+          refreshSessions();
+        })
+        .catch(error => {
+          loginButtonElement.disabled = false;
+          const statusCode = parseInt(error.message);
+          loginStatusElement.innerText = "Login Failed";
+          if (statusCode == 401) {
+            loginStatusElement.innerText += " - Unauthorized";
+          } else if (statusCode == 403) {
+            loginStatusElement.innerText += " - Account Disabled";
+          } else if (statusCode == 429) {
+            loginStatusElement.innerText += " - Rate Limit Exceeded";
+          } else {
+            loginStatusElement.innerText += " - Server Error";
+          }
+        });
+    }
+
+    function hideSessions() {
+      refreshButtonElement.disabled = true;
+      sessionTable.hidden = true;
+      sessionInfoText.hidden = true;
+    }
+
+    function showSessions() {
+      refreshButtonElement.disabled = false;
+      sessionTable.hidden = false;
+      sessionInfoText.hidden = false;
+    }
+
+    function refreshSessions() {
+      hideSessions();
+      fetch("https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com/getSessions", {method: "GET", headers: {"Authorization": bearer}})
+        .then(response => {
+          if (response.ok) {
+            return response.json();
+          } else {
+            sessionTable.innerHTML = "";
+            throw new Error(response.status);
+          }
+        })
+        .then(sessionsData => {
+          updateSessionTable(sessionsData);
+        })
+        .catch(error => {
+          const statusCode = parseInt(error.message);
+          if (statusCode == 401) {
+            sessionInfoText.innerText = "Refresh Failed (Invalid Token)";
+          } else {
+            sessionInfoText.innerText = "Refresh Failed (Server Error)";
+          }
+        })
+        .finally(error => {
+          showSessions();
+        });
+    }
+
+    function updateSessionTable(sessionsData) {
+      sessionTable.innerHTML = "";
+      if (sessionsData.length == 0) {
+        sessionTable.style.visibility = "hidden";
+        sessionInfoText.textContent = "No Sessions Found";
+        return;
+      }
+      sessionTable.style.visibility = "visible";  // req'd if table is populated from empty
+
+      const currentTime = new Date();
+      const currentTimeFormatted = currentTime.toLocaleString("en-US", {hour: "numeric", minute: "numeric", second: "numeric", hour12: true});
+      sessionInfoText.textContent = `Last Refresh ${currentTimeFormatted}`;
+
+      const tableHeader = sessionTable.appendChild(document.createElement("thead"));
+      const tableHeaderRow = tableHeader.appendChild(document.createElement("tr"));
+      const tableBody = sessionTable.appendChild(document.createElement("tbody"));
+      ["Name", "Photos", "Created", "Status", ""].forEach(headerText => {
+        const th = tableHeaderRow.appendChild(document.createElement("th"));
+        th.textContent = headerText;
+      });
+
+      sessionsData.forEach(sessionData => {
+        const newRow = tableBody.insertRow();
+        const nameCell = newRow.insertCell();
+        const numPhotosCell = newRow.insertCell();
+        const createTimeCell = newRow.insertCell();
+        const statusCell = newRow.insertCell();
+        const optionsCell = newRow.insertCell();
+        
+        nameCell.setAttribute("data-label", "Name");
+        numPhotosCell.setAttribute("data-label", "Photos");
+        createTimeCell.setAttribute("data-label", "Created");
+        statusCell.setAttribute("data-label", "Status");
+        optionsCell.setAttribute("data-label", "Options");
+
+        nameCell.innerText = sessionData["name"];
+        nameCell.title = sessionData["id"].slice(0, 8);
+        numPhotosCell.innerText = sessionData["numPhotos"];
+        if (sessionData["numCrops"]) {
+          numPhotosCell.title = `Detections: ${sessionData["numCrops"]}`;
+        }
+        createTimeCell.innerText = new Date(sessionData["createTime"] + "Z").toLocaleString("en-US", {month: "short", day: "numeric"});
+        createTimeCell.title = new Date(sessionData["createTime"] + "Z").toLocaleString("en-US");
+        statusCell.textContent = sessionData["status"];
+        if (statusCell.textContent === "Ready") {
+          statusCell.style.color = "green";
+        } else if (statusCell.textContent === "Failed" || statusCell.textContent === "Aborted") {
+          statusCell.style.color = "red";
+        }
+
+        const optionsButtonContainer = optionsCell.appendChild(document.createElement("div"));
+        const optionsButton = optionsButtonContainer.appendChild(document.createElement("button"));
+        const optionsMenu = optionsButtonContainer.appendChild(document.createElement("ul"));
+        const renameItem = optionsMenu.appendChild(document.createElement("li"));
+        const deleteItem = optionsMenu.appendChild(document.createElement("li"));
+
+        optionsButtonContainer.classList.add("dropdown");
+        optionsButton.classList.add("unstyled");
+        optionsButton.style = "font-size: 24px;";
+        optionsButton.innerHTML = "⋮";
+        optionsMenu.classList.add("dropdown-menu");
+        renameItem.textContent = "Rename";
+        deleteItem.textContent = "Delete";
+
+        optionsCell.style.cursor = "default";  // nonclickable
+        if (sessionData["dataURL"]) {
+          newRow.classList.add("clickable");
+          newRow.addEventListener("click", () => {
+            if (!optionsCell.contains(event.target)) {  // exclude optionsCell
+              localStorage.setItem(sessionData["id"], JSON.stringify({"name": sessionData["name"], "dataUrl": sessionData["dataURL"]}));
+              window.open(`sort.html?sessionId=${sessionData["id"]}`, "_blank");
+            }
+          });
+        }
+
+        optionsButton.addEventListener("click", () => {
+          optionsMenu.style.display = (optionsMenu.style.display === "block" ? "none" : "block");
+        });
+
+        document.addEventListener("click", (e) => {
+          if (!optionsButton.contains(e.target) && !optionsMenu.contains(e.target)) {
+            optionsMenu.style.display = "none";
+          }
+        });
+
+        renameItem.addEventListener("click", function() {
+          optionsMenu.style.display = "none";
+          const newName = prompt("New Session Name:", sessionData["name"]);
+          if (newName != null & newName != sessionData["name"]) {
+            console.log(`Renaming session ${sessionData["id"]} to '${newName}'`);
+            hideSessions();
+            fetch(`https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com/modifySession`, 
+              {method: "PATCH", headers: {"Authorization": bearer}, body: JSON.stringify({"sessionId": sessionData["id"], "action": "rename", "newName": newName})})
+              .then(response => {if (response.ok) {refreshSessions();} else {throw new Error(response.status);}})
+              .catch(error => {alert(`Rename Failed (Error ${error.message})`);});
+          }
+        });
+
+        deleteItem.addEventListener("click", function() {
+          optionsMenu.style.display = "none";
+          const deleteSession = confirm(`Delete session '${sessionData["name"] ? sessionData["name"] : sessionData["id"].slice(0, 8)}'?`);
+          if (deleteSession) {
+            console.log(`Deleting session ${sessionData["id"]}`);
+            hideSessions();
+            fetch(`https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com/modifySession`, 
+              {method: "PATCH", headers: {"Authorization": bearer}, body: JSON.stringify({"sessionId": sessionData["id"], "action": "delete"})})
+              .then(response => {if (response.ok) {refreshSessions();} else {throw new Error(response.status);}})
+              .catch(error => {alert(`Delete Failed (Error ${error.message})`);});
+          }
+        });
+      });
+    }
+
+    function showUploadOptions() {
+      dragAndDropEnabled = false;
+      uploadAreaElement.classList.add("solid-border");
+      browseFilesUIElement.style.display = "none";
+      uploadOptionsUIElement.style.display = "block";
+      sessionNameInputElement.value = "";
+      sessionNameInputElement.disabled = false;
+      uploadStatusTextElement.textContent = `${selectedFiles.length} Photos Selected`;
+      
+      console.log(selectedFiles)
+      const minPhotos = 2;  // todo 50
+      if ((selectedFiles.length >= minPhotos) && (selectedFiles.length <= maxPhotos)) {
+        uploadButtonElement.disabled = false;
+      } else {
+        uploadStatusTextElement.innerText += ((selectedFiles.length < minPhotos) ? `\n(Minimum ${minPhotos})` : `\n(Maximum ${maxPhotos})`);
+        uploadButtonElement.disabled = true;
+      }
+    }
+
+    function showBrowseFiles() {
+      dragAndDropEnabled = true;
+      uploadAreaElement.classList.remove("solid-border");
+      browseFilesUIElement.style.display = "block";
+      uploadOptionsUIElement.style.display = "none";
+    }
+
+    async function uploadFilesParallel(files, uploadURL, uploadFields) {
+      let successCnt = 0;
+      const uploadPromises = files.map(file =>
+        uploadFile(file, uploadURL, uploadFields)
+          .then(success => {
+            if (success) {
+              successCnt++;
+              uploadStatusTextElement.innerText = `Uploaded ${Math.min(99, (100 * successCnt / files.length)).toFixed(0)}%`;
+            };
+          })
+      );
+      await Promise.all(uploadPromises);
+      console.log(`Uploaded ${successCnt}/${files.length} images`);
+      return successCnt;
+    }
+
+    async function uploadFile(file, uploadURL, uploadFields, maxAttempts = 3) {
+      try {
+        file = await resizeImage(file);
+      } catch (error) {
+        console.error(`Skipping unreadable image '${file.name}'`);
+        return false;
+      }
+      let postBody = new FormData()
+      for (const key in uploadFields) {
+        postBody.append(key, uploadFields[key]);
+      }
+      postBody.append("file", file);
+      for (let attemptCnt = 1; attemptCnt <= maxAttempts; attemptCnt++) {
+        try {
+          const response = await fetch(uploadURL, {method: "POST", body: postBody});
+          if (response.ok) {
+            console.log(`Uploaded '${file.name}' (${(file.size / 1024 / 1024).toFixed(2)} MB)`)
+            return true;
+          } else {
+            throw new Error(response.status);
+          }
+        } catch (error) {
+          let errorMessage = `Upload '${file.name}' (${(file.size / 1024 / 1024).toFixed(2)} MB) failed with error ${error} (attempt ${attemptCnt}/${maxAttempts})`
+          if (attemptCnt < maxAttempts) {
+            const backoffTime = Math.pow(2, attemptCnt) * 1000;  // exponential backoff (2,4,8,..)
+            console.warn(errorMessage + ` - Retrying after ${backoffTime} ms`);
+            await new Promise(resolve => setTimeout(resolve, backoffTime));
+          } else {
+            console.error(errorMessage);
+            return false;  // out of attempts
+          }
+        }
+      }
+    }
+
+    async function resizeImage(file, targetDim = 1920, quality = 0.8) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        const reader = new FileReader();
+        reader.onload = function (event) {
+          img.src = event.target.result;
+        };
+        img.onload = function () {
+          const origWidth = img.width;
+          const origHeight = img.height;
+          const maxDim = origWidth > origHeight ? origWidth : origHeight;
+
+          let newWidth = origWidth;
+          let newHeight = origHeight;
+          if (maxDim > targetDim) {
+            const scaleRatio = targetDim / maxDim;
+            newWidth = Math.round(newWidth * scaleRatio);
+            newHeight = Math.round(newHeight * scaleRatio);
+          }
+
+          const canvas = document.createElement("canvas");
+          canvas.width = newWidth;
+          canvas.height = newHeight;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, newWidth, newHeight);
+          canvas.toBlob(function (blob) {
+            // persist original file extension (.jpeg, .jpg, .JPG, etc)
+            const newFile = new File([blob], file.name + ".webp", {type: "image/webp"});
+            resolve(newFile);
+            console.log(`Resized '${file.name}' from ${origWidth}x${origHeight} to ${newWidth}x${newHeight} (${(file.size / 1024 / 1024).toFixed(2)} MB to ${(newFile.size / 1024 / 1024).toFixed(2)} MB)`)
+          }, "image/webp", quality);
+        };
+        img.onerror = function () {
+          reject(new Error());
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function filterInputFiles(files) {  // only allow jpg/jpeg
+      return Array.from(files).filter(file => {
+        const filename = file.name.toLowerCase();
+        return filename.endsWith(".jpg") || filename.endsWith(".jpeg");
+      });
+    }
+
+    function warnBeforeUnload(event) {  // default browser warning before leaving page
+      event.preventDefault();
+      event.returnValue = "";
+    }
+  </script>
+</head>
+
+<body>
+  <main>
+    <div class="logo">
+      <a class="logo-link" href="index.html">
+        <svg xmlns="http://www.w3.org/2000/svg" width="45" height="45" viewBox="0 0 24 24"><path d="M12 8c-2.168 0-4 1.832-4 4s1.832 4 4 4 4-1.832 4-4-1.832-4-4-4zm0 6c-1.065 0-2-.935-2-2s.935-2 2-2 2 .935 2 2-.935 2-2 2z"/><path d="M20 5h-2.586l-2.707-2.707A.996.996 0 0 0 14 2h-4a.996.996 0 0 0-.707.293L6.586 5H4c-1.103 0-2 .897-2 2v11c0 1.103.897 2 2 2h16c1.103 0 2-.897 2-2V7c0-1.103-.897-2-2-2zM4 18V7h3c.266 0 .52-.105.707-.293L10.414 4h3.172l2.707 2.707A.996.996 0 0 0 17 7h3l.002 11H4z"/></svg>
+        <strong>FotoSort</strong>
+      </a>
+    </div>
+
+    <hr>
+
+    <div id="login-menu" class="center">
+      <input id="username-input" type="text" placeholder="Username" autocomplete="off" maxlength="16" style="width:8em"/>
+      <button id="login-button" type="button">Login</button>
+      <div><small id="login-status" style="color: red;"></small></div>
+    </div>
+
+    <div id="console-content" hidden>
+      <section>
+        <h1>Create Session</h1>
+        <div id="upload-area">
+          <div id="browse-ui" style="display: block;">
+            <p>Drag and Drop</p>
+            <p>or</p>
+            <button id="select-photos-button" class="blue">Browse Photos</button>
+          </div>
+          <table id="upload-ui" style="display: none;">
+            <tr>
+              <td><input id="session-name-input" type="text" placeholder="Session Name" autocomplete="off" maxlength="32"/></td>
+              <td><button id="upload-button" class="green">Upload</button></td>
+            </tr>
+            <tr>
+              <td><span id="upload-status-text"></span></td>
+              <td><button id="reset-button" class="red">Reset</button></td>
+            </tr>
+          </table>
+        </div>
+      </section>
+      <br>
+      <section>
+        <h1 style="position: relative;">Sessions
+          <button id="refresh-button" class="unstyled" title="Refresh Sessions" style="position: absolute; right: 0;">
+            <svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" width="20px" height="20px" transform="rotate(-10)" viewBox="0 0 492.9 492.9"><path d="M123 374.2a173.2 173.2 0 0 1-8.3-249.1l45.3 45.4c2.5 2.5 7 .7 7.6-3L192.4 5.2a4 4 0 0 0-4.6-4.6L25.4 25.4c-3.7.6-5.5 5.1-3 7.6L68 78.5a239.4 239.4 0 0 0 22.8 354.7A238 238 0 0 0 244 484.3l10.2-66.7c-46.7 4-94.7-10.4-131.2-43.4zm302 40.1a239.4 239.4 0 0 0-23-354.7 238 238 0 0 0-153-51l-10.2 66.6A171.5 171.5 0 0 1 414 181.7a173.2 173.2 0 0 1-35.8 186l-45.4-45.4c-2.5-2.5-7-.7-7.6 3l-24.8 162.3a4 4 0 0 0 4.6 4.6l162.4-24.8c3.7-.6 5.4-5 3-7.6L425 414.3z"/></svg>
+          </button>
+        </h1>
+        <table id="session-table"></table>
+        <div class="center"><small id="session-info"></small></div>
+      </section>
+    </div>
+  </main>
+
+  <footer>
+    <small>© 2025 FotoSort.com | <a href="faq.html">FAQ</a> | <a href="legal.html">Terms of Service & Privacy Policy</a> | Email: <a href="mailto:trackdaysfyi@gmail.com">trackdaysfyi@gmail.com</a></small>
+  </footer>
+</body>
+
+<script>
+  let bearer = null;
+  let maxPhotos = null;
+  localStorage.clear();  // wipe presigned URLs
+  let selectedFiles = [];
+  let dragAndDropEnabled = true;
+
+  // login
+  const usernameInputElement = document.getElementById("username-input");
+  const loginButtonElement = document.getElementById("login-button");
+  const loginStatusElement = document.getElementById("login-status");
+
+  // create session
+  const uploadAreaElement = document.getElementById("upload-area");
+  const selectPhotosButton = document.getElementById("select-photos-button");
+  const browseFilesUIElement = document.getElementById("browse-ui");
+  const uploadOptionsUIElement = document.getElementById("upload-ui");
+  const sessionNameInputElement = document.getElementById("session-name-input");
+  const uploadStatusTextElement = document.getElementById("upload-status-text");
+  const uploadButtonElement = document.getElementById("upload-button");
+  const resetButton = document.getElementById("reset-button");
+  
+  // previous sessions
+  const sessionTable = document.getElementById("session-table");
+  const sessionInfoText = document.getElementById("session-info");
+
+  // refresh
+  const refreshButtonElement = document.getElementById("refresh-button");
+
+  loginButtonElement.addEventListener("click", function () {
+    login();
+  });
+
+  refreshButtonElement.addEventListener("click", function () {
+    refreshSessions();
+  });
+
+  uploadAreaElement.addEventListener("dragover", (e) => {
+    if (dragAndDropEnabled) {
+      e.preventDefault();
+      uploadAreaElement.classList.add("drag-over");
+    }
+  });
+
+  uploadAreaElement.addEventListener("dragleave", () => {
+    uploadAreaElement.classList.remove("drag-over");
+  });
+
+  uploadAreaElement.addEventListener("drop", (e) => {
+    if (dragAndDropEnabled) {
+      e.preventDefault();
+      uploadAreaElement.classList.remove("drag-over");
+      selectedFiles = filterInputFiles(e.dataTransfer.files);
+      showUploadOptions();
+    }
+  });
+
+  selectPhotosButton.addEventListener("click", () => {
+    const fileInput = Object.assign(document.createElement("input"), {type: "file", multiple: true, accept: "image/jpeg"});
+    fileInput.addEventListener("change", () => {
+      selectedFiles = filterInputFiles(fileInput.files);
+      showUploadOptions();
+    });
+    fileInput.click();
+  });
+
+  resetButton.addEventListener("click", () => {
+    selectedFiles = [];
+    showBrowseFiles();
+  });
+
+  uploadButtonElement.addEventListener("click", async function (e) {
+    e.preventDefault();
+
+    // disable modifying elements
+    uploadButtonElement.disabled = true;
+    sessionNameInputElement.disabled = true;
+    resetButton.disabled = true;
+    document.body.classList.add("loading");
+    window.addEventListener("beforeunload", warnBeforeUnload);
+
+    try {
+      console.log("Requesting upload URL");
+      uploadStatusTextElement.innerText = "Starting Upload";
+      const presignedURLResponse = await fetch(
+        "https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com/createSession",
+        {method: "POST", headers: {"Authorization": bearer}}
+      );
+      if (!presignedURLResponse.ok) {
+        console.error(`Unable to retrieve upload URL (error code ${presignedURLResponse.status})`);
+        throw new Error(presignedURLResponse.status);
+      }
+      const presignedURLData = await presignedURLResponse.json();
+
+      console.log(`Starting upload of ${selectedFiles.length} photos`)
+      const numUploaded = await uploadFilesParallel(selectedFiles, presignedURLData.url, presignedURLData.fields);
+      const successFrac = numUploaded / selectedFiles.length;
+      if (successFrac < 0.9)
+        throw new Error(`Session creation aborted due to partial upload (${numUploaded}/${selectedFiles.length})`);
+
+      console.log("Notifying server of upload completion");
+      const notifyResponse = await fetch(
+        "https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com/createSession",
+        {method: "POST", headers: {"Authorization": bearer}, body: JSON.stringify({"sessionId": presignedURLData.sessionId, "sessionName": sessionNameInputElement.value})}
+      )
+      if (!notifyResponse.ok)
+        throw new Error(`Unable to notify server of upload completion (error code ${notifyResponse.status})`);
+
+      console.log("Server notified of upload completion");
+      if (numUploaded == selectedFiles.length) {
+        uploadStatusTextElement.innerText = "Session Created";
+      } else {
+        uploadStatusTextElement.innerText = `Session Created (${numUploaded}/${selectedFiles.length})`;
+      }
+      refreshSessions();
+
+    } catch (error) {
+      console.error(error);
+      uploadStatusTextElement.innerText = "Upload Failed" + (error == "Error: 403" ? " - Account Limit Reached" : "");
+    }
+
+    // enable modifying elements
+    resetButton.disabled = false;
+    document.body.classList.remove("loading");
+    window.removeEventListener("beforeunload", warnBeforeUnload);
+  });
+
+</script>
+</html>

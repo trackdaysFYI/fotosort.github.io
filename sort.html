@@ -1,0 +1,1407 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="">
+  <title>FotoSort</title>
+  <link rel="icon" href="favicon.ico" type="image/x-icon">
+  <script type="text/javascript" src="clusterer.js"></script>
+  
+  <style>
+    :root {
+      --cell-width: none;
+      --scrollbar-width: none;
+    }
+
+    @font-face {
+      font-family: "FunnelSans";
+      src: url("fonts/FunnelSans-Regular.ttf");
+    }
+
+    * {
+      font-family: "FunnelSans";
+        -webkit-user-select: none;  /* Safari */
+            -ms-user-select: none;  /* Explorer, Edge */
+                user-select: none;  /* Chrome, Edge, Opera, Firefox */
+    }
+
+    body {
+      margin: 0;
+    }
+
+    #app {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: row;
+    }
+
+    #main-control-panel {
+      max-width: 150px;
+      padding: 1rem;
+      background-color: rgb(220, 220, 220);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+
+    #main-control-panel input, #main-control-panel select {
+      text-align: center;
+    }
+
+    #main-control-panel select, #main-control-panel button {
+      width: 80%;
+    }
+
+    #main-control-panel .button-container {
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+    }
+
+    #main-control-panel button.export {
+      width: auto;
+    }
+
+    #main-control-panel button.export svg {
+      fill-opacity: 50%;
+    }
+
+    #main-control-panel button.export svg:hover {
+      fill-opacity: 100%;
+      transform: scale(1.1);
+    }
+
+    #main-control-panel fieldset {
+      width: 100%;
+      margin-bottom: 10px;
+      padding: 5px;
+      border: 1px solid rgba(0, 0, 0, 0.25);
+      border-radius: 5px;
+      background-color: rgba(0, 0, 0, 0.025);
+    }
+
+    #main-control-panel table {
+      width: 100%;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    #main-control-panel table.bordered {
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      border-radius: 5px;
+      border-collapse: separate;
+      background-color: rgba(0, 0, 0, 0.025);
+    }
+
+    #main-control-panel .slider-labels {
+      display: flex;
+      justify-content: space-around;
+      font-size: 12px;
+    }
+
+    #main-control-panel .tooltip {
+      position: relative;
+      cursor: help;
+    }
+
+    #main-control-panel .tooltip-text {
+      visibility: hidden;
+      opacity: 0;
+      position: absolute;
+      top: 120%;
+      margin-top: 10px;
+      border-radius: 5px;
+      background-color: #424242;
+      color: white;
+      z-index: 100;
+      transition: opacity 0.3s;
+    }
+
+    #main-control-panel .tooltip-text.small {
+      width: 200px;
+      font-size: 12px;
+      padding: 5px;
+      transform: translateX(-50%);
+    }
+
+    #main-control-panel .tooltip-text.large {
+      width: 710px;
+      font-size: 13px;
+      padding: 8px;
+      transform: translateX(-8%);
+      text-align: left !important;
+    }
+
+    #main-control-panel .tooltip-text.large ol, #main-control-panel .tooltip-text.large li {
+      padding-right: 5px;
+      text-align: left !important;
+    }
+
+    #main-control-panel .tooltip:hover .tooltip-text {
+      visibility: visible;
+      opacity: 1;
+    }
+
+    #main-control-panel footer {
+      position: absolute;
+      bottom: 0.5rem;
+      font-size: 0.7rem;
+    }
+
+    #main-content {
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+
+    table#group-table {
+      width: 100%;
+      height: 100%;
+      border-top: 1px solid black;
+    }
+
+    table#group-table th, table#group-table td {
+      min-width: var(--cell-width);
+      max-width: var(--cell-width);
+      text-align: center;
+      border-right: 1px solid black;
+      border-bottom: 1px solid black;
+    }
+
+    .frozen {
+      position: sticky;
+      background-color: white !important;
+      left: 0px;
+      z-index: 10;
+      border-left: 1px solid black;
+    }
+
+    .unfrozen {
+      border-left: 1px solid black;
+    }
+
+    table#group-table th {
+      font-size: 15px;
+      height: 24px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      cursor: grab;
+    }
+    
+    th.group-header:hover {
+      background-color: rgba(0, 0, 0, 0.05);
+    }
+
+    td.group-control {
+      height: 24px;
+    }
+
+    table .group-content {
+      height: 100%;
+      position: relative;  /* req'd for drag indicator */
+      overflow-y: auto;
+      scrollbar-width: var(--scrollbar-width);
+    }
+
+    table .img-container {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      cursor: grab;
+    }
+
+    .img-container img {
+      aspect-ratio: 1 / 1;
+    }
+
+    .img-container *, .drag-indicator {
+      pointer-events: none;  /* prevent dragging */
+    }
+
+    .text-overlay {
+      position: absolute;
+      bottom: 3%;
+      right: 3%;
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 12px;
+      text-align: center;
+      background: rgba(0, 0, 0, 0.6);
+      padding: 3px;
+      border-radius: 50%;
+    }
+    
+    .drag-indicator {
+      position: absolute;
+      width: 100%;
+      height: 6px;
+      transform: translate(0px, -3px);
+      background-color: rgba(255, 255, 255, 0.6); 
+      background-image: linear-gradient(45deg, rgba(0, 0, 0, 0.6) 25%, transparent 25%), linear-gradient(-45deg, rgba(0, 0, 0, 0.6) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(0, 0, 0, 0.6) 75%), linear-gradient(-45deg, transparent 75%, rgba(0, 0, 0, 0.6) 75%);
+      background-size: 6px 6px;
+      background-position: 0 0, 0 3px, 3px -3px, -3px 0px;
+      z-index: 1;
+      display: none;  /* initally invisible */
+    }
+
+    input.sliderGray{
+      accent-color: gray;
+    }
+
+    button.unstyled {
+      background: none;
+      border: none;
+      padding: 0;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    button.unstyled:hover {
+      transform: scale(1.1);
+    }
+
+    div#loader {
+      font-family: "Courier New", sans-serif;
+      font-size: 24px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 50vh;
+      color: dimgray;
+    }
+
+    div#loader-element {
+      /* https://css-loaders.com/square/ */
+      width: 85px;
+      height: 35px;
+      --g1:conic-gradient(from  90deg at 3px  3px ,#00000000 90deg,dimgray 0);
+      --g2:conic-gradient(from -90deg at 22px 22px,#00000000 90deg,dimgray 0);
+      background:var(--g1),var(--g1),var(--g1), var(--g2),var(--g2),var(--g2);
+      background-size: 25px 25px;
+      background-repeat: no-repeat;
+      animation: l6 1s infinite alternate;
+    }
+    @keyframes l6 {
+      0%   {background-position:0 50% ,50% 50% ,100% 50% }
+      20%  {background-position:0 0   ,50% 50% ,100% 50% }
+      40%  {background-position:0 100%,50%  0  ,100% 50% }
+      60%  {background-position:0 50% ,50% 100%,100% 0   }
+      80%  {background-position:0 50% ,50% 50% ,100% 100%}
+      100% {background-position:0 50% ,50% 50% ,100% 50% }
+    }
+  </style>
+
+  <script>
+    const splitColumnSmall = `<svg width="18" height="18" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 48 48"><g transform="rotate(90, 24, 24)"><polygon fill="#90CAF9" points="36,13 36,9 22,9 22,22 13,22 13,26 22,26 22,39 36,39 36,35 26,35 26,26 26,22 26,13"/><rect x="5" y="20" fill="#2196F3" width="12" height="8"/><rect x="32" y="7" fill="#2196F3" width="12" height="8"/><rect x="32" y="33" fill="#2196F3" width="12" height="8"/></g></svg>`
+    const splitColumnImg = `<svg width="24" height="24" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 48 48"><g transform="rotate(90, 24, 24)"><polygon fill="#90CAF9" points="36,13 36,9 22,9 22,22 13,22 13,26 22,26 22,39 36,39 36,35 26,35 26,26 26,22 26,13"/><rect x="5" y="20" fill="#2196F3" width="12" height="8"/><rect x="32" y="7" fill="#2196F3" width="12" height="8"/><rect x="32" y="33" fill="#2196F3" width="12" height="8"/></g></svg>`
+    const deleteColumnImg = `<svg width="24" height="24" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 48 48"><path fill="#90CAF9" d="M30,5H18c-2.2,0-4,1.8-4,4v30c0,2.2,1.8,4,4,4h12c2.2,0,4-1.8,4-4V9C34,6.8,32.2,5,30,5z M18,39V9h12l0,30 H18z"/><circle fill="#F44336" cx="38" cy="38" r="10"/><g fill="#ffffff"><rect x="36.5" y="32" transform="matrix(-.707 .707 -.707 -.707 91.74 38)" width="3" height="12"/><rect x="36.5" y="32" transform="matrix(-.707 -.707 .707 -.707 38 91.74)" width="3" height="12"/></g></svg>`
+    const addColumnImg = `<svg width="24" height="24" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 48 48"><path fill="#90CAF9" d="M30,5H18c-2.2,0-4,1.8-4,4v30c0,2.2,1.8,4,4,4h12c2.2,0,4-1.8,4-4V9C34,6.8,32.2,5,30,5z M18,39V9h12l0,30 H18z"/><circle fill="#43A047" cx="38" cy="38" r="10"/><g fill="#ffffff"><rect x="36" y="32" width="4" height="12"/><rect x="32" y="36" width="12" height="4"/></g></svg>`
+    const freezeColumnImg = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2V18M12 22V18M12 18L15 21M12 18L9 21M15 3L12 6L9 3" stroke="#2196F3" stroke-width="1.5" stroke-linecap="round"/><path d="M3.33978 7.00042L6.80389 9.00042M6.80389 9.00042L17.1962 15.0004M6.80389 9.00042L5.70581 4.90234M6.80389 9.00042L2.70581 10.0985M17.1962 15.0004L20.6603 17.0004M17.1962 15.0004L21.2943 13.9023M17.1962 15.0004L18.2943 19.0985" stroke="#2196F3" stroke-width="1.5" stroke-linecap="round"/><path d="M20.66 7.00042L17.1959 9.00042M17.1959 9.00042L6.80364 15.0004M17.1959 9.00042L18.294 4.90234M17.1959 9.00042L21.294 10.0985M6.80364 15.0004L3.33954 17.0004M6.80364 15.0004L2.70557 13.9023M6.80364 15.0004L5.70557 19.0985" stroke="#2196F3" stroke-width="1.5" stroke-linecap="round"/></svg>`
+    const autosortColumnSmall = `<svg width="18" height="18" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 48 48"><g fill="#BCDFFB"><polygon points="43.4,13 35,20 35,6"/><rect x="8" y="11" width="32" height="4"/></g><g fill="#BCDFFB"><rect x="34" y="23" width="4" height="21"/><rect x="28" y="23" width="4" height="21"/><rect x="22" y="23" width="4" height="21"/><rect x="16" y="23" width="4" height="21"/><rect x="10" y="23" width="4" height="21"/></g></svg>`
+    const autosortColumnImg = `<svg width="24" height="24" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 48 48"><g fill="#BCDFFB"><polygon points="43.4,13 35,20 35,6"/><rect x="8" y="11" width="32" height="4"/></g><g fill="#BCDFFB"><rect x="34" y="23" width="4" height="21"/><rect x="28" y="23" width="4" height="21"/><rect x="22" y="23" width="4" height="21"/><rect x="16" y="23" width="4" height="21"/><rect x="10" y="23" width="4" height="21"/></g></svg>`
+  </script>
+
+  <script>
+    let lastExecutionTime = 0;
+    let srcImgContainerId = null;  // not using dataTransfer api due to bug
+    let srcGroupId = null;
+
+    async function loadDataBIN(url) { 
+      const response = await fetch(url);
+      const arrayBuffer = await response.arrayBuffer();
+      const dataView = new DataView(arrayBuffer);
+      const decoder = new TextDecoder("utf-8");
+
+      let cursor = 0;
+      const version = dataView.getUint8(cursor, true); cursor += 1;
+
+      const numImages = dataView.getUint16(cursor, true); cursor += 2;
+      const imageInfoArr = Array.from({length: numImages}, () => ({}));
+
+      for (let i = 0; i < numImages; i += 1) {
+        const numIds = dataView.getUint16(cursor, true); cursor += 2;
+        const ids = [];
+        for (let j = 0; j < numIds; j += 1) {
+          ids.push(dataView.getUint16(cursor, true)); cursor += 2;
+        }
+        imageInfoArr[i]["extIds"] = ids;
+      }
+
+      const idToSourceName = {};
+      const skippedSourceNames = [];
+      const numNames = dataView.getUint16(cursor, true); cursor += 2;
+      for (let i = 0; i < numNames; i += 1) {
+        const nameLength = dataView.getUint8(cursor, true); cursor += 1;
+        const name = decoder.decode(new Uint8Array(arrayBuffer, cursor, nameLength)); cursor += nameLength;
+        const numNameIds = dataView.getUint8(cursor, true); cursor += 1;
+        if (!numNameIds) {
+          skippedSourceNames.push(name);
+        }
+        for (let j = 0; j < numNameIds; j += 1) {
+          idToSourceName[dataView.getUint16(cursor, true)] = name; cursor += 2;
+        }
+      }
+
+      imageInfoArr.forEach(imageInfo => {
+        imageInfo["srcNames"] = imageInfo["extIds"].map(id => idToSourceName[id]);
+      });
+
+      for (let i = 0; i < numImages; i += 1) {
+        const imageLength = dataView.getUint32(cursor, true); cursor += 4;
+        imageInfoArr[i]["imgData"] = new Uint8Array(arrayBuffer, cursor, imageLength); cursor += imageLength;
+      }
+
+      let similarityVector = [];
+      const minVal = dataView.getFloat32(cursor, true); cursor += 4;
+      const maxVal = dataView.getFloat32(cursor, true); cursor += 4;
+      for (let i = cursor; i < arrayBuffer.byteLength; i += 2) {
+        similarityVector.push(dataView.getUint16(i, true));
+      }
+      similarityVector = similarityVector.map(d => d / 65535 * (maxVal - minVal) + minVal);
+
+      return {imageInfoArr, similarityVector, skippedSourceNames};
+    }
+
+    function getImageGroupFromChild(element) {
+      while (element && !(element.classList.contains("group-content") && element.tagName === "DIV"))
+        element = element.parentElement;
+      return element;  // can be null
+    }
+
+    function editHeader() {
+      const header = this;
+      const inputElementAlreadyExists = header.querySelectorAll("input").length !== 0;
+      if (inputElementAlreadyExists) return;
+
+      const originalText = header.textContent;
+      const input = document.createElement("input");
+      input.type = "text";
+      if (!originalText.includes("Group")) input.value = originalText;
+      input.style.width = getComputedStyle(document.documentElement).getPropertyValue("--cell-width");
+      input.style.boxSizing = "border-box";
+      input.style.padding = "0px";
+      input.style.textAlign = "center";
+      input.style.cursor = "text";
+      header.innerHTML = "";
+      header.draggable = false;
+      header.appendChild(input);
+      input.focus();
+
+      input.addEventListener("input", () => {
+        const allowedPattern = /^[\w\s-]+$/;  // a-z + A-Z + 0-9 + _ + spaces + -
+        const maxLength = 32;
+        if (!allowedPattern.test(input.value)) {  // remove invalid chars
+          input.value = input.value.replace(/[^a-zA-Z0-9_ -]/g, "");
+        }
+        if (input.value.length > maxLength) {  // truncate
+          input.value = input.value.slice(0, maxLength);
+        }
+        applySort(false, true, false);  // don't autosort + reset groups + don't reset photos
+        setAutogroupVisibility(false);
+      });
+
+      function colorDuplicateGroupNames() {
+        const allGroups = table.querySelectorAll(".group-header");
+        const allGroupNames = Array.from(allGroups).map(h => h.textContent.trim().toLowerCase());
+
+        let groupNameToGroup = new Map();
+        let duplicateFound = false;
+        for (let i = 0; i < allGroups.length; i++) {
+          const groupName = allGroupNames[i];
+          if (groupNameToGroup.has(groupName)) {
+            groupNameToGroup.get(groupName).push(allGroups[i]);
+            duplicateFound = true;
+          } else {
+            groupNameToGroup.set(groupName, [allGroups[i]]);
+          }
+        }
+
+        groupNameToGroup.forEach((groups, groupName) => {
+          if (groups.length > 1) {
+            groups.forEach(group => {group.style.background = "orangered";});
+          } else {
+            groups[0].style.removeProperty("background");
+          }
+        });
+        return duplicateFound;
+      }
+
+      input.addEventListener("blur", () => {  // on lost focus
+        input.value = input.value.trim();
+        header.textContent = input.value || originalText;
+        colorDuplicateGroupNames();
+        header.draggable = true;
+      });
+
+      input.addEventListener("keypress", event => {
+        if (event.key === "Enter") {
+          input.value = input.value.trim();
+          header.textContent = input.value || originalText;
+          colorDuplicateGroupNames();
+          header.draggable = true;
+        }
+      });
+    }
+
+    function dragGroupStart(event) {
+      console.assert(event.target.classList.contains("group-header"), "element is not group header");
+      srcGroupId = event.target.id.replace("group-header-", "");
+      const draggedGroupContent = document.getElementById("group-content-" + srcGroupId);
+      event.dataTransfer.setDragImage(draggedGroupContent, 0, 0);
+    }
+
+    function dragImgStart(event) {
+      console.assert(event.target.classList.contains("img-container"), "element is not image container");
+      srcImgContainerId = event.target.id.replace("img-container-", "");
+    }
+
+    function dragOver(event) {
+      event.preventDefault();
+      if (Date.now() - lastExecutionTime >= 50) {
+        // throttle visualization - can't use dragEnter since image centers are borders
+        lastExecutionTime = Date.now();
+        const dstGroup = getImageGroupFromChild(event.target);
+        if (dstGroup === null) return;
+        const closestImgContainer = getClosestImgContainer(dstGroup, event.clientY);
+        dragIndicator.style.display = "block";
+        dstGroup.insertBefore(dragIndicator, closestImgContainer);
+      }
+    }
+    
+    function dragLeave(event) {
+      if (event && event.relatedTarget && !event.relatedTarget.classList.contains("img-container"))  // reduce drag indicator flicker between vertical images
+        dragIndicator.style.display = "none";
+    }
+
+    function dropOnImg(event) {
+      event.preventDefault();
+      dragIndicator.style.display = "none";
+      const dstGroup = getImageGroupFromChild(event.target);
+      const dstGroupId = dstGroup.id.replace("group-content-", "");
+      const dstClosestImgContainer = getClosestImgContainer(dstGroup, event.clientY);
+      if (srcImgContainerId !== null) {  // src is image
+        const draggedImgContainer = document.getElementById("img-container-" + srcImgContainerId);
+        dstGroup.insertBefore(draggedImgContainer, dstClosestImgContainer);
+        srcImgContainerId = null;
+      } else if (srcGroupId !== null) {  // src is group
+        if (srcGroupId !== dstGroupId) {
+          const draggedGroupContent = document.getElementById("group-content-" + srcGroupId);
+          const draggedImgContainers = draggedGroupContent.querySelectorAll(".img-container");
+          draggedImgContainers.forEach(imgContainer => {
+            dstGroup.insertBefore(imgContainer, dstClosestImgContainer);
+          });
+        }
+        srcGroupId = null;
+      }
+      applySort();
+      setAutogroupVisibility(false);
+    }
+
+    function dropOnGroup(event) {
+      event.preventDefault();
+      dragIndicator.style.display = "none";
+      const dstGroupId = event.target.id.replace("group-header-", "");
+      const dstGroup = document.getElementById("group-content-" + dstGroupId);
+      if (srcImgContainerId !== null) {  // src is image
+        const draggedImgContainer = document.getElementById("img-container-" + srcImgContainerId);
+        dstGroup.appendChild(draggedImgContainer);
+        srcImgContainerId = null;
+      } else if (srcGroupId !== null) {  // src is group
+        if (srcGroupId !== dstGroupId) {
+          const draggedGroupContent = document.getElementById("group-content-" + srcGroupId);
+          const draggedImgContainers = draggedGroupContent.querySelectorAll(".img-container");
+          draggedImgContainers.forEach(imgContainer => {
+            dstGroup.appendChild(imgContainer);
+          });
+        }
+        srcGroupId = null;
+      }
+      applySort();
+      setAutogroupVisibility(false);
+    }
+
+    function getClosestImgContainer(groupElement, y) {
+      const imgContainers = [...groupElement.querySelectorAll(".img-container")];
+      const closestImgContainer = imgContainers.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        if (offset < 0 && offset > closest.offset) {
+            return {offset: offset, element: child};
+        } else {
+            return closest;
+        }
+      }, {offset: Number.NEGATIVE_INFINITY}).element;
+      return closestImgContainer;
+    }
+    
+    function updateZoomLevel(newSize) {
+      document.documentElement.style.setProperty("--cell-width", newSize);
+    }
+    
+    function deleteGroup(deleteIdx) {
+      moveGroupImages(deleteIdx, 0);
+      const trs = table.querySelectorAll("tr");
+      trs.forEach(tr => {
+        tr.querySelectorAll("th, td")[deleteIdx].remove();
+      });
+    }
+
+    function deleteAllGroups() {
+      // move all images to unassigned group
+      moveImagesToGroupsByLabel(Array(clusterer.distanceMatrix.length).fill(-1));
+      const trs = table.querySelectorAll("tr");
+      trs.forEach(tr => {
+        let tableElements = Array.from(tr.querySelectorAll("th, td"));
+        tableElements.slice(1).forEach(e => e.remove());  // don't delete first (unassigned) group
+      });
+    }
+
+    function findFirstAvailableId(ids) {
+      const sortedIds = ids.sort((a, b) => a - b);
+      for (let i = 0; i < sortedIds.length; i++)
+        if (sortedIds[i] !== i)
+          return i;
+      return sortedIds.length;
+    }
+
+    function findIndex(groupId) {
+      const rows = table.querySelectorAll("tr");
+      const headers = rows[0].querySelectorAll("th");
+      const targetGroupId = "group-header-" + groupId;
+      return Array.from(headers).findIndex(th => th.id === targetGroupId);
+    }
+
+    function createGroup(createIdx = -1) {
+      const rows = table.querySelectorAll("tr");
+      const existingIds = Array.from(rows[0].querySelectorAll("th")).map(th => parseInt(th.id.replace("group-header-", "")));
+      const newId = findFirstAvailableId(existingIds);
+      if (createIdx === -1) createIdx = rows[0].cells.length;
+
+      // create header
+      const newHeaderCell = document.createElement("th");
+      newHeaderCell.id = "group-header-" + newId;
+      newHeaderCell.classList.add("group-header");
+      newHeaderCell.textContent = "Group " + newId;
+      newHeaderCell.draggable = true;
+      newHeaderCell.ondragstart = dragGroupStart;
+      newHeaderCell.ondrop = dropOnGroup;
+      newHeaderCell.ondragover = (event) => {event.preventDefault();};
+      newHeaderCell.onclick = editHeader;
+      rows[0].insertBefore(newHeaderCell, rows[0].cells[createIdx] || null);
+
+      // create control panel
+      const newControlCell = document.createElement("td");
+      newControlCell.classList.add("group-control");
+      const splitGroupButton = document.createElement("button");
+      splitGroupButton.title = "Split Group";
+      splitGroupButton.innerHTML = splitColumnImg;
+      splitGroupButton.classList.add("unstyled");
+      splitGroupButton.addEventListener("click", function() {  // split column
+        const currentGroupIdx = findIndex(newId);
+        const newGroupIdx = currentGroupIdx + 1;
+        createGroup(newGroupIdx);
+
+        const groups = table.querySelectorAll(".group-content");
+        const groupImageContainers = groups[currentGroupIdx].querySelectorAll(".img-container");
+        const imageContainerIds = Array.from(groupImageContainers).map(e => e.id);
+        const imageIds = imageContainerIds.map(s => parseInt(s.replace("img-container-", "")));
+
+        let labels = clusterer.runKMedoidsSubset(2, imageIds);
+
+        const labelSum = labels.reduce((partialSum, a) => partialSum + a, 0);
+        if (labelSum === 0 || labelSum == labels.length) {
+          deleteGroup(newGroupIdx);  // can't do createGroup() here unless re-querying groups
+        } else {
+          const leastFrequentLabel = labelSum > labels.length / 2 ? 0 : 1;
+          labels.forEach((label, subsetIdx) => {
+            if (label == leastFrequentLabel) {
+              groups[newGroupIdx].appendChild(document.getElementById("img-container-" + imageIds[subsetIdx]));
+            }
+          });
+        }
+        applySort(false);
+        setAutogroupVisibility(false);
+      });
+
+      const deleteGroupButton = document.createElement("button");
+      deleteGroupButton.title = "Delete Group";
+      deleteGroupButton.innerHTML = deleteColumnImg;
+      deleteGroupButton.classList.add("unstyled");
+      deleteGroupButton.addEventListener("click", function() {  // delete column
+        const deleteGroupIdx = findIndex(newId);
+        const group = table.querySelectorAll(".group-content")[deleteGroupIdx];
+        const numImages = group.querySelectorAll(".img-container").length;
+        if (numImages > 1) {
+          const confirmation = window.confirm("Deleting this group will move all its photos to 'Unassigned'.\nContinue?");
+          if (!confirmation) return;
+        }
+        deleteGroup(deleteGroupIdx);
+        applySort(false, numImages > 0, numImages > 0);  // don't autosort + only reset groups/photos if group wasn't empty
+        setAutogroupVisibility(false);
+      });
+      
+      const addGroupButton = document.createElement("button");
+      addGroupButton.title = "Add Group";
+      addGroupButton.innerHTML = addColumnImg;
+      addGroupButton.classList.add("unstyled");
+      addGroupButton.addEventListener("click", function() {  // add column
+        const newGroupIdx = findIndex(newId) + 1;
+        console.log("clicked create group on", newId, newGroupIdx)
+        createGroup(newGroupIdx);
+        applySort(false, true, false);  // don't autosort + reset groups + don't reset photos
+        setAutogroupVisibility(false);
+      });
+
+      newControlCell.appendChild(splitGroupButton);
+      newControlCell.appendChild(deleteGroupButton);
+      newControlCell.appendChild(addGroupButton);
+      rows[1].insertBefore(newControlCell, rows[1].cells[createIdx] || null);
+
+      // create div
+      const newContentCell = document.createElement("td");
+      const newGroup = document.createElement("div");   
+      newGroup.id = "group-content-" + newId;
+      newGroup.classList.add("group-content");
+      newGroup.ondrop = dropOnImg;
+      newGroup.ondragleave = dragLeave;
+      newGroup.ondragover = dragOver;
+      newContentCell.appendChild(newGroup);
+      rows[2].insertBefore(newContentCell, rows[2].cells[createIdx] || null);
+    }
+
+    function moveGroupImages(srcIdx, dstIdx) {
+      const groups = table.querySelectorAll(".group-content");
+      const nodes = groups[srcIdx].querySelectorAll(".img-container");
+      nodes.forEach(node => {
+        groups[dstIdx].appendChild(node);
+      });
+      groups[0].appendChild(dragIndicator);  // move drag indicator to unassigned column
+    }
+
+    function moveImagesToGroupsByLabel(labels) {
+      const groups = table.querySelectorAll(".group-content");
+      labels.forEach((label, imgId) => {
+        groups[label + 1].appendChild(document.getElementById("img-container-" + imgId));
+      });
+      groups[0].appendChild(dragIndicator);  // move drag indicator to unassigned column
+    }
+
+    function sortGroupPhotos(sortBy, groupId = null) {
+      if (sortBy == "none") return;
+      let groups = Array.from(table.querySelectorAll(".group-content"));
+      if (groupId == null) {  // sort all except unassigned
+        groups = groups.slice(1);
+      } else  {  // only sort specific group (can be used to sort unassigned)
+        groups = groups.filter(group => group.id === "group-content-" + groupId);
+      }
+      if (sortBy === "similarityFirst") {
+        referenceImage = document.getElementById("group-content-0").querySelector(".img-container");
+        if (referenceImage === null) return;  // do nothing if no unassigned images
+        referenceImageId = parseInt(referenceImage.id.replace("img-container-", ""));
+        groups.forEach(group => {
+          const imageContainers = Array.from(group.getElementsByClassName("img-container"));
+          if (imageContainers.length > 1) {
+            const imageContainersIds = imageContainers.map(container => parseInt(container.id.replace("img-container-", "")));
+            const distances = imageContainersIds.map(id => clusterer.distanceMatrix[id][referenceImageId]);
+            const sortedIdx = Array.from(distances.keys()).sort((a, b) => distances[a] - distances[b]);
+            const sortedimageContainers = sortedIdx.map(i => imageContainers[i]);
+            sortedimageContainers.forEach(imageContainer => group.appendChild(imageContainer));
+          }
+        });
+      } else if (sortBy === "similarity") {
+        groups.forEach(group => {
+          const imageContainers = Array.from(group.getElementsByClassName("img-container"));
+          if (imageContainers.length > 1) {
+            const imageContainersIds = imageContainers.map(container => parseInt(container.id.replace("img-container-", "")));
+            const maxIdx = findMaxIndicesSubset(clusterer.distanceMatrix, imageContainersIds)[0];  // element furthest from average
+            const distances = imageContainersIds.map(id => clusterer.distanceMatrix[id][maxIdx]);
+            const sortedIdx = Array.from(distances.keys()).sort((a, b) => distances[a] - distances[b]);
+            const sortedimageContainers = sortedIdx.map(i => imageContainers[i]);
+            sortedimageContainers.forEach(imageContainer => group.appendChild(imageContainer));
+          }
+        });
+      } else if (sortBy === "filename") {
+        groups.forEach(group => {
+            const imageContainers = Array.from(group.getElementsByClassName("img-container"));
+            if (imageContainers.length > 1) {
+              const filenames = imageContainers.map(container => imgContainerIdToInfo[container.id]["srcNames"][0]);
+              const sortedIdx = filenames.map((_, index) => index).sort((a, b) => filenames[a].localeCompare(filenames[b]));
+              const sortedimageContainers = sortedIdx.map(idx => imageContainers[idx]);
+              sortedimageContainers.forEach(imageContainer => group.appendChild(imageContainer));
+            }
+          });
+      } else {
+        console.log("unknown sort photo selection:", sortBy);
+        return;
+      }
+    }
+
+    function sortGroups(sortBy = "none") {
+      if (sortBy === "none") return;
+      const allGroupsHeaders = Array.from(table.querySelectorAll(".group-header")).slice(1);
+      const allGroupsControls = Array.from(table.querySelectorAll(".group-control")).slice(1);
+      const allGroupsContent = Array.from(table.querySelectorAll(".group-content")).slice(1);
+      if (allGroupsHeaders.length < 2) return;
+
+      let sortedIdx;
+      if (sortBy === "similarity" || sortBy === "similarityFirst") {
+        const groupsImageIds = allGroupsContent.map(groupContent => Array.from(groupContent.childNodes)
+          .filter(node => node.classList.contains("img-container"))  // exclude dragIndicator
+          .map(node => parseInt(node.id.replace("img-container-", ""))));
+        
+        let referenceImage, referenceImageId, sortMethod;
+        if (sortBy === "similarityFirst") {
+          referenceImage = document.getElementById("group-content-0").querySelector(".img-container");
+          if (referenceImage === null) return;  // do nothing if no unassigned images
+          referenceImageId = parseInt(referenceImage.id.replace("img-container-", ""));
+          sortMethod = "min";
+        } else {
+          referenceImageId = findMaxIndices(clusterer.distanceMatrix)[0];
+          referenceImage = document.getElementById("img-container-" + referenceImageId);
+          sortMethod = "avg";
+        }
+        
+        let distPerGroup;
+        if (sortMethod === "min") {
+          distPerGroup = groupsImageIds.map(ids => {
+            if (ids.length === 0) return Infinity;
+            const minDist = ids.reduce((min, idx) => {
+              const dist = clusterer.distanceMatrix[referenceImageId][idx];
+              return dist < min ? dist : min;
+            }, Infinity);
+            return minDist;
+          });
+        } else {  // sortMethod === "avg"
+          distPerGroup = groupsImageIds.map(ids => {
+            if (ids.length === 0) return Infinity;
+            const sum = ids.reduce((accum, idx) => accum + clusterer.distanceMatrix[referenceImageId][idx], 0);
+            return sum / ids.length;
+          });
+        }
+
+        sortedIdx = Array.from(allGroupsHeaders.keys()).sort((a, b) => {
+          return distPerGroup[a] - distPerGroup[b];  // reversed
+        });
+      } else if (sortBy === "groupname") {
+        sortedIdx = Array.from(allGroupsHeaders.keys()).sort((a, b) => 
+          allGroupsHeaders[a].innerText.localeCompare(allGroupsHeaders[b].innerText, undefined, {numeric: true, sensitivity: "base"})  // A-Z
+        );
+      } else if (sortBy === "photocount") {
+        const numImgsPerGroup = Array.from(allGroupsContent)
+          .map(groupContent => Array.from(groupContent.childNodes)
+          .filter(node => node.classList.contains("img-container"))  // exclude dragIndicator
+          .map(imgContainer => imgContainerIdToInfo[imgContainer.id]["srcNames"].length)
+        ).map(imgsArr => imgsArr.reduce((sum, num) => sum + num, 0));
+        sortedIdx = Array.from(allGroupsHeaders.keys()).sort((a, b) => numImgsPerGroup[b] - numImgsPerGroup[a]);  // largest to smallest
+      } else {
+        console.log("unknown sort group selection:", sortBy);
+        return;
+      }
+      const sortedGroupHeaders = sortedIdx.map(i => allGroupsHeaders[i]);
+      const sortedGroupControls = sortedIdx.map(i => allGroupsControls[i]);
+      const sortedGroupContent = sortedIdx.map(i => allGroupsContent[i]);
+      sortedGroupHeaders.forEach(groupHeader => groupHeader.parentElement.appendChild(groupHeader));
+      sortedGroupControls.forEach(groupControl => groupControl.parentElement.appendChild(groupControl));
+      sortedGroupContent.forEach(groupContent => groupContent.parentElement.parentElement.appendChild(groupContent.parentElement));  // todo refactor table element
+    }
+
+    function setAutogroupVisibility(makeVisible) {
+      if (makeVisible) {
+        autogroupOptions.style.display = "";
+        unlockAutogroupButton.style.display = "none";
+      } else {
+        autogroupOptions.style.display = "none";
+        unlockAutogroupButton.style.display = "";
+      }
+    }
+
+    function toggleAutosort(toggle = null) {
+      let isEnabled;
+      if (toggle == null) {
+        isEnabled = autosortSimilarityButton.getAttribute("data-enabled") === "false";
+      } else {
+        isEnabled = Boolean(toggle);
+      }
+
+      autosortSimilarityButton.setAttribute("data-enabled", isEnabled);
+      sortGroupsSelectElement.disabled = isEnabled;
+      sortPhotosSelectElement.disabled = isEnabled;
+      let newColor;
+      if (isEnabled) {
+        sortGroupsSelectElement.value = "disabled-message";
+        sortPhotosSelectElement.value = "disabled-message";
+        sortGroups("similarityFirst");
+        sortGroupPhotos("similarityFirst");
+        newColor = "#2196F3";
+      } else {
+        sortGroupsSelectElement.value = "groupname";
+        sortPhotosSelectElement.value = "similarity";
+        sortGroups("groupname");
+        sortGroupPhotos("similarity");
+        newColor = "#BCDFFB";
+      }
+      autosortSimilarityButton.querySelectorAll("g").forEach(svg_path => {
+        svg_path.setAttribute("fill", newColor);
+      });
+    }
+
+    function applySort(applyAutosort = true, resetGroups = true, resetPhotos = true) {
+      const autosortEnabled = autosortSimilarityButton.getAttribute("data-enabled") === "true";
+      if (autosortEnabled) {
+        if (applyAutosort) {
+          sortGroups("similarityFirst");
+          sortGroupPhotos("similarityFirst");
+        }
+      } else {
+        if (resetGroups) sortGroupsSelectElement.value = "none";
+        if (resetPhotos) sortPhotosSelectElement.value = "none";
+      }
+    }
+    
+    function getPercentile(arr, percentile, isSorted=False) {
+      const sortedArr = isSorted ? arr : [...arr].sort((a, b) => a - b);
+      const rank = (percentile / 100) * (sortedArr.length - 1);
+      const lowerIndex = Math.floor(rank);
+      const upperIndex = Math.ceil(rank);
+      if (lowerIndex === upperIndex) return sortedArr[lowerIndex];
+      const lowerValue = sortedArr[lowerIndex];
+      const upperValue = sortedArr[upperIndex];
+      return lowerValue + (rank - lowerIndex) * (upperValue - lowerValue);  // linear interpolation
+    }
+
+    const getOutlierThreshold = (arr) => {
+      const sortedArr = [...arr].sort((a, b) => a - b);
+      const p50 = getPercentile(sortedArr, 50, true);
+      const p95 = getPercentile(sortedArr, 95, true);
+      const outlierThreshold = p95 + 1.0 * (p95 - p50);  // based on iqr
+      return [outlierThreshold, p95];
+    };
+
+    function runClustering(k, threshold) {
+      let labels;
+      if (k === null) {
+        labels = clusterer.runSingleLinkage(threshold, 2);
+
+        const labelToCount = labels.reduce((map, label) => {
+          if (label !== -1) map.set(label, (map.get(label) || 0) + 1);
+          return map;
+        }, new Map());
+        let [outlierThreshold, targetSize] = getOutlierThreshold(Array.from(labelToCount.values()));
+
+        const reversedLabelToCount = new Map([...labelToCount.entries()].sort((a, b) => b[0] - a[0]));
+        reversedLabelToCount.forEach((count, oldLabel) => {  // reversed order s.t. label map stays relevant
+          if (count < outlierThreshold) return;
+          const numSplits = Math.ceil(count / targetSize);
+          const labelIndices = labels.flatMap((label, i) => (label === oldLabel ? [i] : []));
+          const newSubsetLabels = clusterer.runKMedoidsSubset(numSplits, labelIndices, 1);
+          const numNewSubsets = Math.max(...newSubsetLabels);
+          console.assert(numNewSubsets >= 0)
+          if (numNewSubsets >= 1) {  // shift all labels above oldLabel to make space
+            for (let i = 0; i < labels.length; i++) {
+              if (labels[i] > oldLabel) {
+                labels[i] += numNewSubsets;
+              }
+            }
+          }
+
+          for (let idx = 0; idx < labelIndices.length; idx++) {
+            const imageId = labelIndices[idx];
+            const newLabel = newSubsetLabels[idx];
+            if (newLabel === 0) continue;  // keep existing label
+            labels[imageId] = (newLabel > 0) ? newLabel + oldLabel : -1;  // oldLabel acts as offset
+          }
+        });
+      } else {
+        labels = clusterer.runKMedoids(k, 2);
+      }
+
+      const numClusters = Math.max(...labels) + 1;
+      deleteAllGroups();
+      for (let i = 0; i < numClusters; i++) {
+        createGroup();
+      }
+      moveImagesToGroupsByLabel(labels);
+      if (sortPhotosSelectElement.value == "none") sortPhotosSelectElement.value = "similarity"
+      sortGroups(sortGroupsSelectElement.value);
+      sortGroupPhotos(sortPhotosSelectElement.value); 
+      sortGroupPhotos(sortPhotosSelectElement.value, 0);  // sort unassigned column
+    }
+  
+    function generateAndDownloadScript(groupNameToPaths, targetLinux=true, download=true) {
+      const copyCmd = targetLinux ? "cp" : "copy";
+      const pauseLine = targetLinux ? `read -rsn1 -p "Press any key to continue . . ."; echo\n` : "pause\n";
+      const slash = targetLinux ? "/" : "\\";
+
+      let batScript = "";
+      if (targetLinux) {
+        batScript += "#!/bin/bash\n";
+      } else {
+        batScript += "@echo off\n";
+        batScript += "setlocal\n";
+      }
+      batScript += "\n";
+      batScript += "echo ------------------------------------------\n";
+      batScript += "echo                  FotoSort                 \n";
+      batScript += "echo ------------------------------------------\n";
+      if (sessionName) {
+        batScript += `echo Session Name: '${sessionName}'\n`;
+      }
+      batScript += pauseLine;
+      batScript += "\n";
+      batScript += "echo Checking directory\n";
+      if (targetLinux) {
+        batScript += `for F in "${Object.values(groupNameToPaths).flat().join("\" \"")}"; do\n`;
+        batScript += `  if [ ! -f "$F" ]; then\n`;
+        batScript += `    echo "ABORTED: Image '$F' was not found. Confirm that this script is in the image directory."\n`;
+        batScript += "    echo No changes made.\n";
+        batScript += "    " + pauseLine;
+        batScript += "    exit 1\n";
+        batScript += "  fi\n";
+        batScript += "done\n";
+      } else {
+        batScript += `for %%F in ("${Object.values(groupNameToPaths).flat().join("\", \"")}") do (\n`;
+        batScript += "  if not exist %%~F (\n";
+        batScript += "    echo ABORTED: Image '%%~F' was not found. Confirm that this script is in the image directory.\n";
+        batScript += "    echo No changes made.\n";
+        batScript += "    " + pauseLine;
+        batScript += "    exit /b 1\n";
+        batScript += "  )\n";
+        batScript += ")\n";
+      }
+      batScript += "\n";
+      batScript += "echo Creating group folders\n";
+      batScript += `mkdir ${Object.keys(groupNameToPaths).flat().map(groupName => `"${groupName}${slash}"`).join("\nmkdir ")}\n`;
+      batScript += "\n";
+      batScript += "echo Copying images to group folders\n";
+      for (const [groupName, paths] of Object.entries(groupNameToPaths)) {
+        for (const path of paths) {
+          batScript += `${copyCmd} "${path}" "${groupName}${slash}"\n`;
+        }
+      }
+      batScript += "\n";
+      batScript += "echo Finished\n";
+      if (!targetLinux) {
+        batScript += "endlocal\n";
+      }
+      batScript += pauseLine;
+
+      if (download) {
+        const blob = new Blob([batScript], {type: "text/plain"});
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `copy-script${sessionNameStd ? "-" + sessionNameStd : ""}.${targetLinux ? "sh" : "cmd"}`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+      } else {
+        console.log(batScript);
+      }
+    }
+
+    function exportScript(targetLinux = true) {
+      try {
+        const groupNames = Array.from(table.querySelectorAll(".group-header")).map(header => header.innerText);
+        const groupInfo = Array.from(table.querySelectorAll(".group-content"))
+          .map(groupContent => Array.from(groupContent.childNodes)
+          .filter(node => node.classList.contains("img-container"))  // exclude dragIndicator
+          .map(img => imgContainerIdToInfo[img.id])
+          .reduce((acc, obj) => { // merge sub-objects
+            Object.entries(obj).forEach(([key, values]) => {
+              acc[key] = acc[key] || new Set();
+              values.forEach(value => acc[key].add(value));
+            });
+            return acc;
+          }, {})
+        );
+
+        const groupNamesLowercase = groupNames.map(groupName => groupName.toLowerCase());
+        if (groupNames.length != new Set(groupNamesLowercase).size) {
+          alert("Unable to export: duplicate group names detected");
+          return;
+        } else if (groupNames.length != groupInfo.length) {
+          throw new Error;
+        }
+        
+        let groupNameToPaths = {};
+        let groupNameToExtIds = {};
+        for (let i = 0; i < groupNames.length; i++) {
+          if (Object.keys(groupInfo[i]).length !== 0) { // skip empty groups
+            groupNameToPaths[groupNames[i]] = Array.from(groupInfo[i]["srcNames"]);
+            groupNameToExtIds[groupNames[i]] = Array.from(groupInfo[i]["extIds"]);
+          }
+        }
+        if (skippedSourceNames.length) {  // add skipped images to unassigned group
+          groupNameToPaths[groupNames[0]] = (groupNameToPaths[groupNames[0]] || []).concat(skippedSourceNames);
+        }
+        fetch("https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com/saveSession", {
+          method: "POST", body: JSON.stringify({"sessionId": sessionId, "groupNameToExtIds": groupNameToExtIds})});
+        generateAndDownloadScript(groupNameToPaths, targetLinux);
+      } catch (error) {
+        console.error(error);
+        alert("Export Error");
+        return;
+      }
+    }
+  </script>
+</head>
+
+<body>
+  <div id="loader">
+    <div id="loader-element"></div>
+    <span id="loader-text">Loading</span>
+  </div>
+  <div id="app" style="display:none">
+    <div id="main-control-panel">
+      <b>FotoSort</b>
+      <label class="tooltip">
+        <table class="bordered">
+          <tr><td>📚 Instructions</td></tr>
+        </table>
+        <span class="tooltip-text large" id="instructions-tooltip-text">
+          <b>Recommended Workflow</b>
+          <ol>
+            <li>
+              In the <i>Autogroup</i> section, enter the approximate number of groups (if known), or adjust the similarity slider to a level that results in the highest quality groups.<br>
+            </li>
+            <br>
+            <li>Review the photos in each group to ensure they contain the same individual.<br>
+              Otherwise, click the <i>Split Group</i> %splitColumnImg% button to divide the group into two. Multiple splits may be done as necessary.<br>
+              For fine adjustment, individual photos can be dragged to different groups.
+              Groups can be merged by dragging one group name into another.
+              Photos with an unknown group should be moved to the <i>Unassigned</i> group.</li>
+            <br>
+            <li>
+              If there are unassigned photos, enable <i>Autosort</i> by clicking %autosortColumnImg% below the <i>Unassigned</i> group label.<br>
+              This orders the groups based on the visual similarity to the first unassigned photo.<br>
+              Repeatedly move the first unassigned photo to its appropriate group until no photos remain.<br>
+              If a photo cannot be assigned to an existing group, create a new group for it.
+            </li>
+            <br>
+            <li>
+              Disable <i>Autosort</i>, and set <i>Group Order</i> to <i>Similarity</i> on the left control panel.<br>
+              Merge adjacent groups containing the same individual by dragging one group title into another.
+            </li>
+            <br>
+            <li>
+              <i>[Optional]</i> Label each group by clicking the group title and entering a unique name (ex: rider number).<br>
+              For better visibility, increase the Zoom Level on the left control panel.
+            </li>
+            <br>
+            <li>
+              Click the <i>Export Script</i> button for your system (Windows/Mac/Linux) on the left control panel to generate a script that copies the photos on your device into the defined group folders.<br>
+              Run the script in the original upload directory.
+            </li>
+          </ol>
+          <b>Alternate Workflow</b>
+          <ol>
+            Steps 4 and 5 may be swapped if race numbers are used at your event.<br>
+            Label each group by race number, disregarding duplicate labels. Then set the <i>Group Order</i> to <i>Group Name</i> and merge groups that contain the same label and motorcycle.
+          </ol>
+      </span></label>
+    
+      <hr style="width: 100%;">
+    
+      <fieldset>
+        <legend>Autogroup
+          <label class="tooltip">🛈<span class="tooltip-text small">Initial automatic grouping of photos.</span></label>
+        </legend>
+        <table id="autogroup-table">
+
+          <tr><td>
+            <table class="bordered">
+              <tr><td>
+                # Groups
+                <label class="tooltip">🛈<span class="tooltip-text small">Automatically split photos into the specified number of groups. Underestimates may result in poor grouping performance. Groups with one photo are 'unassigned'.</span></label>
+              </td></tr>
+              <tr><td>
+                <input id="num-groups-input" type="number" name="integerInput" min="1" max="999" step="1" pattern="\d+" style="width:3.5em;">
+              </td></tr>
+            </table>
+          </td></tr>
+
+          <tr><td><i>- or -</i></td></tr>
+
+          <tr><td>
+            <table class="bordered">
+              <tr><td>
+                Similarity
+                <label class="tooltip">🛈<span class="tooltip-text small">Automatically group photos based on similarity.<br>'Strict' matching increases the likelihood of one individual being split across multiple groups. 'Relaxed' matching increases the likelihood of multiple individuals being assigned to one group.</span></label>
+              </td></tr>
+              <tr><td>
+                <input id="threshold-slider" type="range" min="0.008" value="0.012" max="0.016" step="0.001">
+                <div class="slider-labels">
+                  <span>Strict</span>
+                  <span>Relaxed</span>
+                </div>
+              </td></tr>
+            </table>
+          </td></tr>
+        </table>
+
+        <button id="unlock-autogroup" style="display:none;">Unlock</button>
+      </fieldset>
+    
+      <fieldset>
+        <legend>Sort</legend>
+        <table>
+          <tr><td>
+            <table class="bordered">
+              <tr><td>
+                ↔ Group Order
+              </td></tr>
+              <tr><td>               
+                <select id="sort-groups-select">
+                  <option value="none" selected>None</option>
+                  <option value="similarity">Similarity</option>
+                  <option value="groupname">Group Name</option>
+                  <option value="photocount">Photo Count</option>
+                  <option value="disabled-message" hidden>Autosort</option>
+                </select>
+              </td></tr>
+            </table>
+          </td></tr>
+          <tr><td>
+            <table class="bordered">
+              <tr><td>
+                ↕ Photo Order
+              </td></tr>
+              <tr><td>
+                <select id="sort-photos-select">
+                  <option value="none">None</option>
+                  <option value="similarity" selected>Similarity</option>
+                  <option value="filename">Filename</option>
+                  <option value="disabled-message" hidden>Autosort</option>
+                </select>
+              </td></tr>
+            </table>
+          </td></tr>
+        </table>
+      </fieldset>
+    
+      <fieldset>
+        <legend>Visibility</legend>
+        <table>
+          <tr><td>
+            <table class="bordered">
+              <tr><td>
+                Zoom Level
+              </td></tr>
+              <tr><td>
+                <input id="zoom-slider" type="range" min="80" value="96" max="256" step="16">
+                <div class="slider-labels">
+                  <span>Small</span>
+                  <span>Large</span>
+                </div>
+              </td></tr>
+            </table>
+          </td></tr>
+          <tr><td>
+            <button id="toggle-scrollbar-button">Show Scrollbars</button>
+          </td></tr>
+        </table>
+      </fieldset>
+
+      <fieldset>
+        <legend>Export Script</legend>
+        <div class="button-container">
+          <button id="export-script-button-windows" class="export unstyled" title="Windows"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 512 512"><path d="M243 40 512 0v240H243z" style="fill:#90c300"/><path d="m0 75 207-30v198H0z" style="fill:#f8672c"/><path d="m243 472 269 40V278H243z" style="fill:#ffc400"/><path d="m0 437 207 30V278H0z" style="fill:#00b4f2"/></svg></button>
+          <button id="export-script-button-mac" class="export unstyled" title="Mac"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="-1.5 0 20 20"><path fill-rule="evenodd" d="M11.57 3.2A4.28 4.28 0 0 0 12.66 0a4.75 4.75 0 0 0-3.08 1.51 4.08 4.08 0 0 0-1.1 3.1 3.94 3.94 0 0 0 3.1-1.42m2.62 7.43a4.45 4.45 0 0 0 2.8 4.05c-.02.07-.44 1.44-1.44 2.85-.87 1.21-1.78 2.43-3.2 2.45-1.4.03-1.85-.79-3.45-.79s-2.1.77-3.42.82c-1.37.05-2.42-1.32-3.3-2.53C.4 14.98-.96 10.45.88 7.39a5.15 5.15 0 0 1 4.32-2.5c1.35-.03 2.63.86 3.45.86.82 0 2.37-1.07 4-.91a4.9 4.9 0 0 1 3.81 1.98c-.1.06-2.28 1.27-2.25 3.8"/></svg></button>
+          <button id="export-script-button-linux" class="export unstyled" title="Linux"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 512 512"><path d="M259 110v-2c0-12 8-21 17-21 10 0 17 9 17 21l-1 7c3-4 4-10 4-15 0-15-9-26-20-26s-20 11-20 26l2 10h1zm-50-22h2c8 0 14 7 16 17v3h2v-5c0-13-7-24-15-24-7 0-13 7-14 18 2-5 5-8 9-9zm140 262c2-8 6-28 2-53-4-31-48-127-55-137-5 0-16 7-26 12-10 7-22 13-29 15l-5 1c-12 0-24-9-31-17-2 15-10 33-18 42-5 6-10 20-14 34-5 12-9 25-14 33-11 17-17 50-10 68 4 9 18 20 30 29 15 12 28 22 29 32 2 12-4 18-10 21l16 19 17 1 36-3c32-5 54-31 58-37 0-7 1-40 3-50 1-4 4-11 16-11l5 1z" style="fill:#fff"/><path d="M210 147c1 3 7 9 15 14l4 3c4 3 7 4 10 4 5-1 23-12 31-17l2-1 8-4 4-3c-1-1-4-4-11-7l-8-3a180 180 0 0 0-23-8c-4 0-11 5-18 11l-14 11zm-63 249-7-12c-6-9-16-19-21-19-3 1-5 6-7 10-3 6-6 12-12 16-5 3-11 4-18 6-4 1-15 3-16 5l1 10c1 5 2 10 1 17l-3 13c-2 6-4 12-2 14s15 4 24 6c12 1 25 3 32 7h2c14 6 39 17 52 17h3c2-2 12-9 13-17 3-10-7-23-13-29-7-7-20-29-29-44zm289 25-2-1c-10-5-16-21-15-32l-1-5-8 10c-6 6-20 12-32 12l-13-2c-12-6-14-21-14-29h-1l1 18 1 10c0 13-4 37-8 54-3 16 3 28 11 31h3c7 0 20-8 31-19 7-8 25-17 40-25l20-11 1-1c0-3-10-8-14-10z" style="fill:#e69629"/><path d="M461 411c-15-6-21-14-21-26 1-15-7-25-11-29 2-9 9-40 0-66-10-29-39-72-70-115-13-17-13-36-14-58-1-21-1-45-13-72a74 74 0 0 0-70-45c-19 0-39 6-54 16-30 21-26 68-24 98l1 12c2 30 0 45-2 50l-15 22-23 31c-8 12-15 31-21 49l-13 34c-9 15-7 28-5 34-3 3-7 7-11 15-5 10-14 15-33 18-9 2-15 6-18 12-5 8-3 18 0 25 3 10 1 16-3 28l-3 9c-1 5-1 10 2 14 7 11 28 15 50 18 13 1 28 7 41 12 14 5 28 10 41 11l5 1c20 0 28-13 31-18a240 240 0 0 1 110-1c2 4 8 13 17 18a45 45 0 0 0 51-9 293 293 0 0 1 72-45c11-6 17-16 17-25-1-8-6-15-14-18zM276 74c11 0 20 11 20 26 0 5-1 11-4 15l1-7c0-12-7-21-17-21-9 0-17 9-17 21v2h-1l-2-10c0-15 9-26 20-26zm-34 51 23 8 8 3c7 3 10 6 11 7l-4 3-8 4-2 1c-8 5-26 16-31 17-4 0-6-1-10-4l-4-3c-8-5-14-11-15-14l14-11c7-6 14-11 18-11zm-28-46c8 0 15 11 15 24v5h-2v-3c-2-10-8-17-16-17h-2c-4 1-7 4-9 9 1-11 7-18 14-18zm-25 390c-1 8-11 15-13 17h-3c-13 0-38-11-52-17h-2c-7-4-20-6-32-7-9-2-22-4-24-6s0-8 2-14l3-13c1-7 0-12-1-17l-1-10c1-2 12-4 16-5 7-2 13-3 18-6 6-4 9-10 12-16 2-4 4-9 7-10 5 0 15 10 21 19l7 12c9 15 22 37 29 44 6 6 16 19 13 29zm139-109c-2 10-3 43-3 50-4 6-26 32-58 37a252 252 0 0 1-53 2l-16-19c6-3 12-9 10-21-1-10-14-20-29-32-12-9-26-20-30-29-7-18-1-51 10-68 5-8 9-21 14-33 4-14 9-28 14-34 8-9 16-27 18-42 7 8 19 17 31 17l5-1c7-2 19-8 29-15 10-5 21-12 26-12 7 10 51 106 55 137 4 25 0 45-2 53l-5-1c-12 0-15 7-16 11zm121 72-20 11c-15 8-33 17-40 25-11 11-24 19-31 19h-3c-8-3-14-15-11-31a249 249 0 0 0 7-82c0 8 2 23 14 29l13 2c12 0 26-6 32-12l8-10 1 5c-1 11 5 27 15 32l2 1c4 2 14 7 14 10l-1 1z"/></svg></button>
+        </div>
+      </fieldset>
+
+      <footer>
+        <hr>
+        © 2025 FotoSort.com
+      </footer>
+    </div>
+
+    <div id="main-content">
+      <table id="group-table" cellspacing="0">
+        <tr><th id="group-header-0" class="group-header frozen" draggable="true">Unassigned</th></tr>
+        <tr><td id="group-control-0" class="group-control frozen"></td></tr>
+        <tr><td id="group-content-0" class="frozen"><div class="group-content"><div class="drag-indicator"></div></div></td></tr>
+      </table>
+    </div>
+  </div>
+</body>
+
+<script>
+  document.getElementById("instructions-tooltip-text").innerHTML = document.getElementById("instructions-tooltip-text").innerHTML.replace("%splitColumnImg%", splitColumnSmall).replace("%autosortColumnImg%", autosortColumnSmall);  // add tooltip icons
+
+  const table = document.getElementById("group-table");
+  const dragIndicator = table.querySelector(".drag-indicator");
+
+  const zoomLevelSliderElement = document.getElementById("zoom-slider");
+  updateZoomLevel(zoomLevelSliderElement.value + "px");
+  zoomLevelSliderElement.addEventListener("input", () => {
+    updateZoomLevel(zoomLevelSliderElement.value + "px");
+  });
+
+  const groupHeaderUnassigned = document.getElementById("group-header-0");
+  groupHeaderUnassigned.ondragstart = dragGroupStart;
+  groupHeaderUnassigned.ondrop = dropOnGroup;
+  groupHeaderUnassigned.ondragover = (event) => {event.preventDefault();};
+
+  const groupControlUnassigned = document.getElementById("group-control-0");
+  const groupContentUnassigned = document.getElementById("group-content-0");
+  groupContentUnassigned.ondrop = dropOnImg;
+  groupContentUnassigned.ondragleave = dragLeave;
+  groupContentUnassigned.ondragover = dragOver;
+
+  const clusterThresholdSliderElement = document.getElementById("threshold-slider");
+  const clusterNumGroupsInputElement = document.getElementById("num-groups-input");
+  
+  clusterThresholdSliderElement.addEventListener("input", () => {
+    clusterThresholdSliderElement.classList.remove("sliderGray");
+    runClustering(null, clusterThresholdSliderElement.value);
+    clusterNumGroupsInputElement.value = "";
+  })
+  
+  clusterNumGroupsInputElement.addEventListener("input", () => {
+    clusterThresholdSliderElement.classList.add("sliderGray");
+    runClustering(clusterNumGroupsInputElement.value, null);
+  })
+  
+  // populate unassigned group controls
+  const unassignedFreezeGroupButton = document.createElement("button");
+  unassignedFreezeGroupButton.innerHTML = freezeColumnImg;
+  unassignedFreezeGroupButton.title = "Unsnap from Left";
+  unassignedFreezeGroupButton.classList.add("unstyled");
+  unassignedFreezeGroupButton.addEventListener("click", function() {
+    const [oldClass, newClass, newColor, newTitle] = groupContentUnassigned.classList.contains("frozen") ? ["frozen", "unfrozen", "#BCDFFB", "Snap Left"] : ["unfrozen", "frozen", "#2196F3", "Unsnap Left"];
+    groupHeaderUnassigned.classList.replace(oldClass, newClass);
+    groupControlUnassigned.classList.replace(oldClass, newClass);
+    groupContentUnassigned.classList.replace(oldClass, newClass);
+    unassignedFreezeGroupButton.title = newTitle;
+    unassignedFreezeGroupButton.querySelectorAll("path").forEach(svg_path => {
+      svg_path.setAttribute("stroke", newColor);
+    });
+  });
+  groupControlUnassigned.appendChild(unassignedFreezeGroupButton);
+
+  const autosortSimilarityButton = document.createElement("button");
+  autosortSimilarityButton.innerHTML = autosortColumnImg;
+  autosortSimilarityButton.title = "Autosort Groups by Similarity to First Unassigned Image";
+  autosortSimilarityButton.classList.add("unstyled");
+  autosortSimilarityButton.setAttribute("data-enabled", "false");
+  autosortSimilarityButton.addEventListener("click", function() {
+    setAutogroupVisibility(false);
+    toggleAutosort();
+  });
+  groupControlUnassigned.appendChild(autosortSimilarityButton);
+
+  const unassignedAddGroupButton = document.createElement("button");
+  unassignedAddGroupButton.innerHTML = addColumnImg;
+  unassignedAddGroupButton.title = "Add Group";
+  unassignedAddGroupButton.classList.add("unstyled");
+  groupControlUnassigned.appendChild(unassignedAddGroupButton);
+  unassignedAddGroupButton.addEventListener("click", function() {
+    createGroup(1);
+  });
+
+  const sortGroupsSelectElement = document.getElementById("sort-groups-select");
+  sortGroupsSelectElement.addEventListener("change", () => {
+    sortGroups(sortGroupsSelectElement.value);
+  });
+
+  const sortPhotosSelectElement = document.getElementById("sort-photos-select");
+  sortPhotosSelectElement.addEventListener("change", () => {
+    sortGroupPhotos(sortPhotosSelectElement.value);
+  });
+
+  const toggleScrollbarButton = document.getElementById("toggle-scrollbar-button")
+  toggleScrollbarButton.addEventListener("click", () => {
+    const currentWidth = getComputedStyle(document.documentElement).getPropertyValue("--scrollbar-width");
+    document.documentElement.style.setProperty("--scrollbar-width", currentWidth === "none" ? "thin" : "none");
+    toggleScrollbarButton.textContent = (currentWidth === "none" ? "Hide" : "Show") + " Scrollbars"
+  });
+
+  const autogroupOptions = document.getElementById("autogroup-table");
+  const unlockAutogroupButton = document.getElementById("unlock-autogroup");
+  unlockAutogroupButton.addEventListener("click", () => {
+    const confirmation = window.confirm("All changes will be discarded if autogroup settings are modified.\nContinue?");
+    if (confirmation) {
+      toggleAutosort(false);  // disable autosort
+      setAutogroupVisibility(true);
+    }
+  });
+
+  document.getElementById("export-script-button-windows").addEventListener("click", () => {exportScript(false);});
+  document.getElementById("export-script-button-mac").addEventListener("click", () => {exportScript(true);});
+  document.getElementById("export-script-button-linux").addEventListener("click", () => {exportScript(true);});
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const sessionId = urlParams.get("sessionId");
+  const sessionData = sessionId in localStorage ? JSON.parse(localStorage.getItem(sessionId)) : null;
+  const sessionName = sessionData ? sessionData["name"] : "";
+  const sessionNameStd = sessionName.replace(/[^a-zA-Z0-9]/g, "");  // drop special characters
+  if (sessionName) {
+    document.title = sessionName;
+  }
+
+  let clusterer;
+  let imgContainerIdToInfo = {};
+  let skippedSourceNames = [];
+
+  async function loadData(url) {
+    const data = await loadDataBIN(url);
+    skippedSourceNames = data["skippedSourceNames"];
+
+    clusterer = new Clusterer(data["similarityVector"], data["imageInfoArr"].length);
+
+    let numImgsCondensed = 0;
+    let numImgsUncondensed = 0;
+    data["imageInfoArr"].forEach((imageInfo, idx) => {
+      const imgContainer = document.createElement("div");
+      imgContainer.id = "img-container-" + idx;
+      imgContainer.classList.add("img-container");
+      imgContainer.draggable = true;
+      imgContainer.ondragstart = dragImgStart;
+      imgContainerIdToInfo[imgContainer.id] = {srcNames: imageInfo["srcNames"], extIds: imageInfo["extIds"]};
+      imgContainer.title = imageInfo["srcNames"].join("\n");
+      
+      const img = document.createElement("img");
+      const blob = new Blob([imageInfo["imgData"]], {type: "image/webp"});
+      img.src = URL.createObjectURL(blob);
+      imgContainer.appendChild(img);
+      
+      if (imageInfo["extIds"].length > 1) {
+        const text = document.createElement("div");
+        text.classList.add("text-overlay");
+        text.innerHTML = `${imageInfo["extIds"].length}x`;
+        imgContainer.appendChild(text);
+      }
+      groupContentUnassigned.appendChild(imgContainer);
+      numImgsCondensed += 1;
+      numImgsUncondensed += imageInfo["extIds"].length;
+    });
+    clusterNumGroupsInputElement.max = numImgsCondensed;
+
+    runClustering(null, clusterThresholdSliderElement.value);
+
+    window.addEventListener("beforeunload", function (event) {  // default browser warning before leaving page
+      event.preventDefault();
+      event.returnValue = "";
+    });
+  };
+
+  async function main() {
+    try {
+      if (!sessionData) throw new Error;
+      await loadData(sessionData["dataUrl"]);
+      document.getElementById("loader").style.display = "none";
+      document.getElementById("app").style.display = "";
+    } catch (error) {
+      console.error(error);
+      document.getElementById("loader-text").innerText = "Authorization Error";
+      document.getElementById("loader-text").style.color = "red";
+      document.getElementById("loader-element").style.visibility = "hidden";
+    }
+  }
+
+  main();
+</script>
+</html>
