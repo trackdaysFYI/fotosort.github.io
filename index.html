@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Frequently Asked Questions for FotoSort">
+  <title>FotoSort - Organize Trackday Photos</title>
+  <link rel="icon" href="favicon.ico" type="image/x-icon">
+
+  <style>
+    @font-face {
+      font-family: "FunnelSans";
+      src: url("fonts/FunnelSans-Regular.ttf");
+    }
+
+    * {
+      font-family: "FunnelSans", sans-serif;
+    }
+
+    html {
+      overflow-y: scroll;
+    }
+
+    body {
+      margin: 0;
+      color: #333;
+      background-image: linear-gradient(to bottom, #AAA, #DDD);
+      background-attachment: fixed;
+    }
+
+    main {
+      padding: 100px 25px 20px 25px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: auto;
+    }
+
+    p {
+      margin-top: 0em;
+      margin-bottom: 0.25em;
+      margin-left: 1em;
+      line-height: 1.35;
+    }
+
+    footer {
+      margin: 8px;
+      text-align: center;
+    }
+
+    header {
+      position: fixed;
+      width: 100%;
+      background-color: #312F2F;
+      padding: 10px 0;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+      z-index: 1000;
+    }
+
+    header .container {
+      padding: 0 25px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    div.logo {
+      flex: 1;
+      text-align: center;
+    }
+
+    div.logo a {
+      color: white;
+      font-size: 48px;
+      display: inline-flex;
+      align-items: center;
+      text-decoration: none;
+      gap: 6px;
+    }
+
+    button {
+      padding: 14px;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+
+    button.orange {
+      background-color: #FE621D;
+      transition: 0.3s;
+    }
+
+    button.orange:hover {
+      background-color: #E4581A;
+    }
+
+    .section {
+      padding: 1.5rem;
+      text-align: left;
+    }
+
+    .section.question:not(:last-child) {
+      margin-top: 8px;
+    }
+
+    .section.question {
+      display: flex;
+      justify-content: space-between;
+      background-color: #008FDB;
+      color: white;
+      padding: 1rem;
+      cursor: pointer;
+      transition: 0.2s ease-in-out;
+
+      border-radius: 16px;
+    }
+
+    .section.answer {
+      border-radius: 0;
+    }
+
+    .section.answer:last-of-type {
+      border-radius: 0 0 16px 16px;
+    }
+
+    .section.question:hover {
+      background-color: #007FC4; 
+    }
+
+    .section.answer:nth-child(odd) {
+      background-color: #FFF;
+    }
+
+    .section.answer:nth-child(even) {
+      background-color: #EEE;
+    }
+
+    .section h1 {
+      font-size: 1.6rem;
+      margin: 0;
+    }
+
+    .section p {
+      font-size: 1.2rem;
+    }
+
+    .section.with-image {
+      display: flex;
+      align-items: center;
+      gap: 0 40px;  /* 0 when image vertical */
+    }
+
+    /* for single images */
+    .section.with-image > img {
+      width: 60%;
+      border-radius: 12px;
+    }
+
+    /* for overlapped images */
+    .section.with-image > .overlap {
+      flex-shrink: 0;
+      position: relative;
+      width: 60%;
+    }
+    .section.with-image > .overlap > img {
+      width: 100%;
+      /* border-radius: 12px; */
+    }
+    .section.with-image > .overlap > img:last-child {
+      position: absolute;
+      left: 0;
+    }
+
+    .section.with-image h2 {
+      color: #FE621D;
+      font-size: 1.6rem;
+      margin-bottom: 10px;
+    }
+
+    .collapsible {
+      max-height: 0;
+      overflow: hidden;
+      margin: 0 16px 0 16px;
+    }
+
+    .collapsible.open {
+      max-height: none;
+    }
+
+    @media (max-width: 800px) {
+      .section.with-image {
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .section.with-image img {
+        width: 100%;
+      }
+
+      /* for overlapped images */
+      .section.with-image > .overlap {
+        width: 100%;
+      }
+    }
+
+    .indicator {
+      width: 28px;
+      height: 28px;
+      flex: 0 0 auto;
+      background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path stroke="white" stroke-width="1" fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708"/></svg>') no-repeat center;
+      transform: rotate(180deg);
+      transition: transform 0.3s ease;
+    }
+
+    .question.open .indicator {
+      transform: rotate(90deg);
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <div class="container">
+      <div class="logo">
+        <a href="index.html">
+          <svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 24 24" fill="#FE621D">
+            <path d="M12 8c-2.168 0-4 1.832-4 4s1.832 4 4 4 4-1.832 4-4-1.832-4-4-4zm0 6c-1.065 0-2-.935-2-2s.935-2 2-2 2 .935 2 2-.935 2-2 2z" />
+            <path d="M20 5h-2.586l-2.707-2.707A.996.996 0 0 0 14 2h-4a.996.996 0 0 0-.707.293L6.586 5H4c-1.103 0-2 .897-2 2v11c0 1.103.897 2 2 2h16c1.103 0 2-.897 2-2V7c0-1.103-.897-2-2-2zM4 18V7h3c.266 0 .52-.105.707-.293L10.414 4h3.172l2.707 2.707A.996.996 0 0 0 17 7h3l.002 11H4z" />
+          </svg>
+          <strong>FotoSort</strong>
+        </a>
+      </div>
+      <button id="login" class="orange">Login</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="qna">
+      <div class="question section open">
+        <h1>What is FotoSort?</h1>
+      </div>
+      <div class="collapsible open">
+        <div class="answer section">
+          <p>FotoSort is an AI tool to group motorcycle photos by rider, designed for trackday and racing photographers.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="qna">
+      <div class="question section open">
+        <h1>How does FotoSort work?</h1>
+      </div>
+      <div class="collapsible open">
+        <div class="answer section with-image">
+          <img src="images/step1.webp">
+          <div>
+            <h2>1. Select</h2>
+            <p>Select up to 5,000 unsorted photos for grouping.</p>
+            <p>FotoSort works with all motorcycle types, including sport bikes, naked bikes, supermotos, and
+              dirt bikes.</p>
+          </div>
+        </div>
+
+        <div class="answer section with-image">
+          <img src="images/step2.webp">
+          <div>
+            <h2>2. Process</h2>
+            <p>Our proprietary, custom-built algorithms detect each of the relevant, in-focus
+              riders within each photo, and automatically group them based on visual characteristics such as
+              motorcycle type, color, and rider apparel, regardless of viewing perspective (eg: front/back/side).</p>
+          </div>
+        </div>
+
+        <div class="answer section with-image">
+          <div class="overlap"><img src="images/step3-menu.webp"><img src="images/step3-groups.webp"></div>
+          <div>
+            <h2>3. Review</h2>
+            <p>Use our advanced UI to quickly refine automatic groupings with drag-and-drop functionality, and
+              easily assign a name to each group.</p>
+          </div>
+        </div>
+
+        <div class="answer section with-image">
+          <img src="images/step4.webp">
+          <div>
+            <h2>4. Apply</h2>
+            <p>Generate a script that copies your original photos to their designated folders with the click of a button.</p>
+            <p>FotoSort works on Windows, MacOS, and Linux.</p>
+          </div>
+        </div>
+
+        <span style="text-align: center; padding: 0;">
+          <p>Example photos from <a href="https://www.flickr.com/photos/danne68/albums/72157659385957122/">QSM Foto</a>,
+          licensed under <a href="https://creativecommons.org/licenses/by-sa/2.0/">CC BY-SA 2.0</a>. Crop, rotation,
+          and overlay applied.</p>
+        </span>
+      </div>
+    </section>
+
+    <section class="qna">
+      <div class="question section">
+        <h1>What are the system requirements?</h1>
+      </div>
+      <div class="collapsible">
+        <div class="answer section">
+          <p>FotoSort works on nearly every Windows, macOS, and Linux device, and <i>does not</i> require the installation of any software.</p>
+          <p>We recommend using a modern browser (ex: Chrome, Safari, Firefox, etc) and an internet connection with 2+ Mb/s upload for every 1,000 photos uploaded at a time.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="qna">
+      <div class="question section">
+        <h1>Are photos uploaded to FotoSort secure?</h1>
+      </div>
+      <div class="collapsible">
+        <div class="answer section">
+          <p>Yes. All uploaded photos are encrypted and authentication is required to access them.</p>
+          <p><u>We will never share or distribute your photos.</u></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="qna">
+      <div class="question section">
+        <h1>Should I resize my photos before uploading them?</h1>
+      </div>
+      <div class="collapsible">
+        <div class="answer section">
+          <p>No. FotoSort automatically resizes a copy of your photos prior to upload to reduce upload time.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="qna">
+      <div class="question section">
+        <h1>How many photos should I sort at a time?</h1>
+      </div>
+      <div class="collapsible">
+        <div class="answer section">
+          <p>FotoSort has been tested to sort up to 5,000 photos at a time.</p>
+          <p>For the best experience, we recommend splitting uploads in manageable chunks of 30 to 60 unique riders. This can be done by breaking up photos by rider session (Advanced/Intermediate/Novice) or race class (EX, AM, middleweight, etc) prior to upload.</p>
+          <p>FotoSort performs best when there are photos of each rider across a full range of perspectives.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="qna">
+      <div class="question section">
+        <h1>How long does processing take?</h1>
+      </div>
+      <div class="collapsible">
+        <div class="answer section">
+          <p>Processing typically takes around 15 minutes for every 1,000 photos in a session.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="qna">
+      <div class="question section">
+        <h1>Do I need to keep FotoSort open during processing?</h1>
+      </div>
+      <div class="collapsible">
+        <div class="answer section">
+          <p>No. After creating a session, processing is done on our secure servers. You may close FotoSort and return at a later time.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="qna">
+      <div class="question section">
+        <h1>Can I create new sessions while older sessions are still processing?</h1>
+      </div>
+      <div class="collapsible">
+        <div class="answer section">
+          <p>Yes. New sessions can be created at any time, even when older sessions are still processing.</p>
+          <p>Multiple sessions can also be uploaded at the same time (in parallel) using multiple browser tabs or windows.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="qna">
+      <div class="question section">
+        <h1>How can I create an account?</h1>
+      </div>
+      <div class="collapsible">
+        <div class="answer section">
+          <p>FotoSort is currently in closed Beta.</p>
+          <p>Please contact us via email (<a href="mailto:support@fotosort.com">support@fotosort.com</a>) if you are interested in trying FotoSort.</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <small>© 2025 FotoSort.com | <a href="legal.html">Terms of Service & Privacy Policy</a> | <a href="mailto:support@fotosort.com">support@fotosort.com</a></small>
+  </footer>
+</body>
+
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("login").addEventListener("click", function() {
+      window.location.href = "console.html";
+    });
+
+    const sections = document.querySelectorAll(".qna");
+
+    sections.forEach((section) => {
+      const question = section.querySelector(".question");
+      const answer = section.querySelector(".collapsible");
+
+      // add indicator to each question
+      const indicator = document.createElement("h1");
+      indicator.classList.add("indicator");
+      question.appendChild(indicator);
+
+      question.addEventListener("click", () => {
+        question.classList.toggle("open");  // req'd for indicator
+        answer.classList.toggle("open");
+      });
+    });
+  });
+</script>
+</html>
