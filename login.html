@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Organize and Sort Motorcycle Trackday Photos">
+  <title>FotoSort - Login</title>
+  <link rel="icon" href="favicon.ico" type="image/x-icon">
+  <style>
+    @font-face {
+      font-family: "FunnelSans";
+      src: url("fonts/FunnelSans-Regular.ttf");
+    }
+
+    * {
+      font-family: "FunnelSans", sans-serif;
+    }
+
+    html {
+      overflow-y: scroll;
+    }
+
+    body {
+      margin: 0;
+      background-image: linear-gradient(to bottom, white, lightgray);
+      background-attachment: fixed;
+    }
+
+    main {
+      max-width: 750px;
+      margin: 0 auto;
+      padding: 20px 35px;
+      background-color: white;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      border-radius: 8px;
+    }
+    footer {
+      margin: 8px;
+      text-align: center;
+    }
+
+    .logo-link {
+      color: black;
+      display: inline-flex;
+      align-items: center;
+      text-decoration: none;
+      gap: 3px;
+    }
+
+    .logo {
+      font-size: 36px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .center {
+      text-align: center;
+    }
+  </style>
+
+  <script>
+    function login() {
+      loginStatusElement.innerText = "";
+      const username = usernameInputElement.value;
+      if (!username) return;
+      loginButtonElement.disabled = true;
+      fetch(`https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com/authenticate?username=${username}`, {method: "POST"})
+        .then(response => {
+          if (response.ok) {
+            return response.json();
+          } else {
+            throw new Error(response.status);
+          }
+        })
+        .then(data => {
+          localStorage.setItem("bearerToken", "Bearer " + data["token"]);
+          localStorage.setItem("maxPhotos", data["photoLimit"]);
+          loginStatusElement.style.color = "green";
+          loginStatusElement.innerText = "Login Successful";
+          setTimeout(function() {
+            window.location.href = "console.html";
+          }, 500);
+        })
+        .catch(error => {
+          loginButtonElement.disabled = false;
+          loginStatusElement.style.color = "red";
+          loginStatusElement.innerText = "Login Failed";
+          const statusCode = parseInt(error.message);
+          if (statusCode == 401) {
+            loginStatusElement.innerText += " - Unauthorized";
+          } else if (statusCode == 403) {
+            loginStatusElement.innerText += " - Account Disabled";
+          } else if (statusCode == 429) {
+            loginStatusElement.innerText += " - Rate Limit Exceeded";
+          } else {
+            loginStatusElement.innerText += " - Server Error";
+          }
+        });
+    }
+  </script>
+</head>
+
+<body>
+  <main>
+    <div class="logo">
+      <a class="logo-link" href="/">
+        <svg xmlns="http://www.w3.org/2000/svg" width="45" height="45" viewBox="0 0 24 24"><path d="M12 8c-2.168 0-4 1.832-4 4s1.832 4 4 4 4-1.832 4-4-1.832-4-4-4zm0 6c-1.065 0-2-.935-2-2s.935-2 2-2 2 .935 2 2-.935 2-2 2z"/><path d="M20 5h-2.586l-2.707-2.707A.996.996 0 0 0 14 2h-4a.996.996 0 0 0-.707.293L6.586 5H4c-1.103 0-2 .897-2 2v11c0 1.103.897 2 2 2h16c1.103 0 2-.897 2-2V7c0-1.103-.897-2-2-2zM4 18V7h3c.266 0 .52-.105.707-.293L10.414 4h3.172l2.707 2.707A.996.996 0 0 0 17 7h3l.002 11H4z"/></svg>
+        <strong>FotoSort</strong>
+      </a>
+    </div>
+
+    <hr>
+
+    <div id="login-menu" class="center">
+      <input id="username-input" type="text" placeholder="Username" autocomplete="off" maxlength="16" style="width:8em"/>
+      <button id="login-button" type="button">Login</button>
+      <div><small id="login-status"></small></div>
+      <br>
+      <div><b>Public account registration is not currently open.</b></div>
+      <div>Please email us at <a href="mailto:support@fotosort.com">support@fotosort.com</a> to create an account.</div>
+    </div>
+  </main>
+
+  <footer>
+    <small>© 2025 FotoSort.com | <a href="legal.html">Terms of Service & Privacy Policy</a> | <a href="mailto:support@fotosort.com">support@fotosort.com</a></small>
+  </footer>
+</body>
+
+<script>
+  localStorage.clear();  // clear previous login
+  const usernameInputElement = document.getElementById("username-input");
+  const loginButtonElement = document.getElementById("login-button");
+  const loginStatusElement = document.getElementById("login-status");
+
+  loginButtonElement.addEventListener("click", function () {
+    login();
+  });
+
+</html>

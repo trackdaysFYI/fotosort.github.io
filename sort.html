@@ -1335,7 +1335,8 @@
 
   const urlParams = new URLSearchParams(window.location.search);
   const sessionId = urlParams.get("sessionId");
-  const sessionData = sessionId in localStorage ? JSON.parse(localStorage.getItem(sessionId)) : null;
+  const sessionsData = JSON.parse(localStorage.getItem("sessions")) || null;
+  const sessionData = sessionsData ? sessionsData[sessionId] : null;
   const sessionName = sessionData ? sessionData["name"] : "";
   const sessionNameStd = sessionName.replace(/[^a-zA-Z0-9]/g, "");  // drop special characters
   if (sessionName) {

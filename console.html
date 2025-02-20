@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Organize and Sort Motorcycle Trackday Photos">
-  <title>FotoSort - Organize Trackday Photos</title>
+  <title>FotoSort - Console</title>
   <link rel="icon" href="favicon.ico" type="image/x-icon">
 
   <style>
@@ -52,10 +52,6 @@
       font-size: 36px;
       display: flex;
       justify-content: center;
-    }
-
-    #console-content {
-      text-align: center;
     }
 
     #upload-area {
@@ -276,42 +272,6 @@
   </style>
 
   <script>
-    function login() {
-      loginStatusElement.innerText = "";
-      const username = usernameInputElement.value;
-      if (!username) return;
-      loginButtonElement.disabled = true;
-      fetch(`https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com/authenticate?username=${username}`, {method: "POST"})
-        .then(response => {
-          if (response.ok) {
-            return response.json();
-          } else {
-            throw new Error(response.status);
-          }
-        })
-        .then(data => {
-          bearer = "Bearer " + data["token"];
-          maxPhotos = data["photoLimit"];
-          document.getElementById("login-menu").hidden = true;
-          document.getElementById("console-content").hidden = false;
-          refreshSessions();
-        })
-        .catch(error => {
-          loginButtonElement.disabled = false;
-          const statusCode = parseInt(error.message);
-          loginStatusElement.innerText = "Login Failed";
-          if (statusCode == 401) {
-            loginStatusElement.innerText += " - Unauthorized";
-          } else if (statusCode == 403) {
-            loginStatusElement.innerText += " - Account Disabled";
-          } else if (statusCode == 429) {
-            loginStatusElement.innerText += " - Rate Limit Exceeded";
-          } else {
-            loginStatusElement.innerText += " - Server Error";
-          }
-        });
-    }
-
     function hideSessions() {
       refreshButtonElement.disabled = true;
       sessionTable.hidden = true;
@@ -352,6 +312,13 @@
     }
 
     function updateSessionTable(sessionsData) {
+      localStorage.setItem("sessions", JSON.stringify(sessionsData
+        .filter(sessionData => sessionData["dataURL"] !== null)
+        .reduce((acc, sessionData) => {
+          acc[sessionData["id"]] = {"name": sessionData["name"], "dataUrl": sessionData["dataURL"]};
+          return acc;
+        }, {})
+      ));
       sessionTable.innerHTML = "";
       if (sessionsData.length == 0) {
         sessionTable.style.visibility = "hidden";
@@ -379,7 +346,7 @@
         const createTimeCell = newRow.insertCell();
         const statusCell = newRow.insertCell();
         const optionsCell = newRow.insertCell();
-        
+
         nameCell.setAttribute("data-label", "Name");
         numPhotosCell.setAttribute("data-label", "Photos");
         createTimeCell.setAttribute("data-label", "Created");
@@ -420,7 +387,6 @@
           newRow.classList.add("clickable");
           newRow.addEventListener("click", () => {
             if (!optionsCell.contains(event.target)) {  // exclude optionsCell
-              localStorage.setItem(sessionData["id"], JSON.stringify({"name": sessionData["name"], "dataUrl": sessionData["dataURL"]}));
               window.open(`sort.html?sessionId=${sessionData["id"]}`, "_blank");
             }
           });
@@ -614,7 +580,7 @@
       <div>Please email us at <a href="mailto:support@fotosort.com">support@fotosort.com</a> to create an account.</div>
     </div>
 
-    <div id="console-content" hidden>
+    <div id="console-content" class="center" hidden>
       <section>
         <h1>Create Session</h1>
         <div id="upload-area">
@@ -654,16 +620,10 @@
 </body>
 
 <script>
-  let bearer = null;
-  let maxPhotos = null;
-  localStorage.clear();  // wipe presigned URLs
+  let bearer = localStorage.getItem("bearerToken");
+  let maxPhotos = localStorage.getItem("maxPhotos");
   let selectedFiles = [];
   let dragAndDropEnabled = true;
-
-  // login
-  const usernameInputElement = document.getElementById("username-input");
-  const loginButtonElement = document.getElementById("login-button");
-  const loginStatusElement = document.getElementById("login-status");
 
   // create session
   const uploadAreaElement = document.getElementById("upload-area");
@@ -675,16 +635,10 @@
   const uploadButtonElement = document.getElementById("upload-button");
   const resetButton = document.getElementById("reset-button");
   
-  // previous sessions
+  // list sessions
+  const refreshButtonElement = document.getElementById("refresh-button");
   const sessionTable = document.getElementById("session-table");
   const sessionInfoText = document.getElementById("session-info");
-
-  // refresh
-  const refreshButtonElement = document.getElementById("refresh-button");
-
-  loginButtonElement.addEventListener("click", function () {
-    login();
-  });
 
   refreshButtonElement.addEventListener("click", function () {
     refreshSessions();
@@ -778,6 +732,17 @@
     resetButton.disabled = false;
     document.body.classList.remove("loading");
     window.removeEventListener("beforeunload", warnBeforeUnload);
+  });
+
+  if (bearer === null) {
+    window.location.href = "login.html";
+  } else {
+    document.getElementById("console-content").hidden = false;
+    refreshSessions();
+  }
+
+  document.getElementById("logout").addEventListener("click", async () => {
+    auth0Client.logout({logoutParams: {returnTo: window.location.origin}});
   });
 
 </script>
