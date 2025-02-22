@@ -454,7 +454,7 @@
       sessionNameInputElement.disabled = false;
       uploadStatusTextElement.textContent = `${selectedFiles.length} Photos Selected`;
 
-      const minPhotos = 50;
+      const minPhotos = 30;
       if ((selectedFiles.length >= minPhotos) && (selectedFiles.length <= maxPhotos)) {
         uploadButtonElement.disabled = false;
       } else {
@@ -592,7 +592,7 @@
 
     <hr>
 
-    <div id="console-content" class="center" hidden>
+    <div id="console-content" class="center">
       <section>
         <h1>Create Session</h1>
         <div id="upload-area">
@@ -779,7 +779,6 @@
   }
 
   (async () => {
-    document.getElementById("console-content").hidden = false;
     await getAuth0Token();
     refreshSessions();
 
