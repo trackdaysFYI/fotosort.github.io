@@ -7,6 +7,7 @@
   <meta name="description" content="Frequently Asked Questions for FotoSort">
   <title>FotoSort - Organize Trackday Photos</title>
   <link rel="icon" href="favicon.ico" type="image/x-icon">
+  <script src="https://cdn.auth0.com/js/auth0-spa-js/2.0/auth0-spa-js.production.js"></script>
 
   <style>
     @font-face {
@@ -87,11 +88,11 @@
       border-radius: 10px;
       cursor: pointer;
       font-size: 1rem;
+      transition: 0.3s;
     }
 
     button.orange {
       background-color: #FE621D;
-      transition: 0.3s;
     }
 
     button.orange:hover {
@@ -392,27 +393,35 @@
 </body>
 
 <script>
-  document.addEventListener("DOMContentLoaded", () => {
-    document.getElementById("login").addEventListener("click", function() {
-      window.location.href = "console.html";
-    });
+  const sections = document.querySelectorAll(".qna");
+  sections.forEach((section) => {
+    const question = section.querySelector(".question");
+    const answer = section.querySelector(".collapsible");
 
-    const sections = document.querySelectorAll(".qna");
+    // add indicator to each question
+    const indicator = document.createElement("h1");
+    indicator.classList.add("indicator");
+    question.appendChild(indicator);
 
-    sections.forEach((section) => {
-      const question = section.querySelector(".question");
-      const answer = section.querySelector(".collapsible");
-
-      // add indicator to each question
-      const indicator = document.createElement("h1");
-      indicator.classList.add("indicator");
-      question.appendChild(indicator);
-
-      question.addEventListener("click", () => {
-        question.classList.toggle("open");  // req'd for indicator
-        answer.classList.toggle("open");
-      });
+    question.addEventListener("click", () => {
+      question.classList.toggle("open");  // req'd for indicator
+      answer.classList.toggle("open");
     });
   });
+
+  (async () => {
+    const auth0Client = await auth0.createAuth0Client({
+      domain: "login.fotosort.com",
+      clientId: "t8MAyGQPxUK0k673gQc7O8zhf6XtrZoD",
+      cacheLocation: "localstorage",
+      authorizationParams: {
+        redirect_uri: window.location.origin + "/console.html",
+      }
+    });
+
+    document.getElementById("login").addEventListener("click", async () => {
+      await auth0Client.loginWithRedirect();
+    });
+  })();
 </script>
 </html>
