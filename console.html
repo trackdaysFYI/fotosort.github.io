@@ -470,29 +470,79 @@
       uploadOptionsUIElement.style.display = "none";
     }
 
+    function createQueue(maxPending) {
+      const items = [];
+      const takeWaiters = [];
+      const pushWaiters = [];
+      let closed = false;
+      return {
+        async push(item) {
+          while (!closed && items.length >= maxPending) {
+            await new Promise(resolve => pushWaiters.push(resolve));
+          }
+          const waiter = takeWaiters.shift();
+          if (waiter) waiter(item);
+          else items.push(item);
+        },
+        close() {
+          closed = true;
+          while (takeWaiters.length) takeWaiters.shift()(null);
+          while (pushWaiters.length) pushWaiters.shift()();
+        },
+        shift() {
+          if (items.length) {
+            const item = items.shift();
+            const waiter = pushWaiters.shift();
+            if (waiter) waiter();
+            return Promise.resolve(item);
+          }
+          if (closed) return Promise.resolve(null);
+          return new Promise(resolve => takeWaiters.push(resolve));
+        }
+      };
+    }
+
     async function uploadFilesParallel(files, uploadURL, uploadFields) {
+      const resizeLimit = Math.min(4, files.length);  // decoded images in memory
+      const uploadLimit = Math.min(8, files.length);  // in-flight requests per host
+      const resizedQueue = createQueue(uploadLimit);
       let successCnt = 0;
-      const uploadPromises = files.map(file =>
-        uploadFile(file, uploadURL, uploadFields)
-          .then(success => {
-            if (success) {
-              successCnt++;
-              uploadStatusTextElement.innerText = `Uploaded ${Math.min(99, (100 * successCnt / files.length)).toFixed(0)}%`;
-            };
-          })
-      );
-      await Promise.all(uploadPromises);
+      let nextIndex = 0;
+
+      async function resizeWorker() {
+        while (nextIndex < files.length) {
+          const file = files[nextIndex++];
+          try {
+            await resizedQueue.push(await resizeImage(file));
+          } catch (error) {
+            console.error(`Skipping unreadable image '${file.name}'`);
+          }
+        }
+      }
+
+      async function uploadWorker() {
+        while (true) {
+          const file = await resizedQueue.shift();
+          if (!file) return;
+          if (await uploadFile(file, uploadURL, uploadFields)) {
+            successCnt++;
+            uploadStatusTextElement.innerText = `Uploaded ${Math.min(99, (100 * successCnt / files.length)).toFixed(0)}%`;
+          }
+        }
+      }
+
+      const uploads = Array.from({length: uploadLimit}, () => uploadWorker());
+      try {
+        await Promise.all(Array.from({length: resizeLimit}, () => resizeWorker()));
+      } finally {
+        resizedQueue.close();
+        await Promise.all(uploads);
+      }
       console.log(`Uploaded ${successCnt}/${files.length} images`);
       return successCnt;
     }
 
     async function uploadFile(file, uploadURL, uploadFields, maxAttempts = 3) {
-      try {
-        file = await resizeImage(file);
-      } catch (error) {
-        console.error(`Skipping unreadable image '${file.name}'`);
-        return false;
-      }
       let postBody = new FormData()
       for (const key in uploadFields) {
         postBody.append(key, uploadFields[key]);
