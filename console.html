@@ -522,43 +522,37 @@
     }
 
     async function resizeImage(file, targetDim = 1920, quality = 0.8) {
-      return new Promise((resolve, reject) => {
-        const img = new Image();
-        const reader = new FileReader();
-        reader.onload = function (event) {
-          img.src = event.target.result;
-        };
-        img.onload = function () {
-          const origWidth = img.width;
-          const origHeight = img.height;
-          const maxDim = origWidth > origHeight ? origWidth : origHeight;
+      // "from-image" applies EXIF orientation, matching the previous Image() path
+      const bitmap = await createImageBitmap(file, {imageOrientation: "from-image"});
+      const origWidth = bitmap.width;
+      const origHeight = bitmap.height;
+      const maxDim = origWidth > origHeight ? origWidth : origHeight;
 
-          let newWidth = origWidth;
-          let newHeight = origHeight;
-          if (maxDim > targetDim) {
-            const scaleRatio = targetDim / maxDim;
-            newWidth = Math.round(newWidth * scaleRatio);
-            newHeight = Math.round(newHeight * scaleRatio);
-          }
+      let newWidth = origWidth;
+      let newHeight = origHeight;
+      if (maxDim > targetDim) {
+        const scaleRatio = targetDim / maxDim;
+        newWidth = Math.round(newWidth * scaleRatio);
+        newHeight = Math.round(newHeight * scaleRatio);
+      }
 
-          const canvas = document.createElement("canvas");
-          canvas.width = newWidth;
-          canvas.height = newHeight;
-          const ctx = canvas.getContext("2d");
-          ctx.drawImage(img, 0, 0, newWidth, newHeight);
-          canvas.toBlob(function (blob) {
-            // persist original file extension (.jpeg, .jpg, .JPG, etc)
-            const newFile = new File([blob], file.name + ".webp", {type: "image/webp"});
-            resolve(newFile);
-            console.log(`Resized '${file.name}' from ${origWidth}x${origHeight} to ${newWidth}x${newHeight} (${(file.size / 1024 / 1024).toFixed(2)} MB to ${(newFile.size / 1024 / 1024).toFixed(2)} MB)`)
-          }, "image/webp", quality);
-        };
-        img.onerror = function () {
-          reject(new Error());
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
+      const canvas = document.createElement("canvas");
+      canvas.width = newWidth;
+      canvas.height = newHeight;
+      const ctx = canvas.getContext("2d");
+      try {
+        ctx.drawImage(bitmap, 0, 0, newWidth, newHeight);
+      } finally {
+        bitmap.close();
+      }
+
+      const blob = await new Promise((resolve, reject) => {
+        canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error()), "image/webp", quality);
       });
+      // persist original file extension (.jpeg, .jpg, .JPG, etc)
+      const newFile = new File([blob], file.name + ".webp", {type: "image/webp"});
+      console.log(`Resized '${file.name}' from ${origWidth}x${origHeight} to ${newWidth}x${newHeight} (${(file.size / 1024 / 1024).toFixed(2)} MB to ${(newFile.size / 1024 / 1024).toFixed(2)} MB)`)
+      return newFile;
     }
 
     function filterInputFiles(files) {  // only allow jpg/jpeg
