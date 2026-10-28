@@ -480,6 +480,7 @@
           while (!closed && items.length >= maxPending) {
             await new Promise(resolve => pushWaiters.push(resolve));
           }
+          if (closed) return;
           const waiter = takeWaiters.shift();
           if (waiter) waiter(item);
           else items.push(item);
@@ -502,41 +503,56 @@
       };
     }
 
-    async function uploadFilesParallel(files, uploadURL, uploadFields) {
+    async function uploadFilesParallel(files, presignedPromise) {
       const resizeLimit = Math.min(4, files.length);  // decoded images in memory
       const uploadLimit = Math.min(8, files.length);  // in-flight requests per host
       const resizedQueue = createQueue(uploadLimit);
       let successCnt = 0;
       let nextIndex = 0;
+      let stopResize = false;
 
       async function resizeWorker() {
-        while (nextIndex < files.length) {
+        while (!stopResize && nextIndex < files.length) {
           const file = files[nextIndex++];
           try {
-            await resizedQueue.push(await resizeImage(file));
+            const resized = await resizeImage(file);
+            if (stopResize) return;
+            await resizedQueue.push(resized);
           } catch (error) {
-            console.error(`Skipping unreadable image '${file.name}'`);
+            if (!stopResize) console.error(`Skipping unreadable image '${file.name}'`);
           }
         }
       }
 
+      // rejecting the session request stops resize and drops anything still queued
+      const presignedTask = Promise.resolve(presignedPromise).then(data => data, error => {
+        stopResize = true;
+        resizedQueue.close();
+        throw error;
+      });
+
       async function uploadWorker() {
+        const {url, fields} = await presignedTask;
         while (true) {
           const file = await resizedQueue.shift();
           if (!file) return;
-          if (await uploadFile(file, uploadURL, uploadFields)) {
+          if (await uploadFile(file, url, fields)) {
             successCnt++;
             uploadStatusTextElement.innerText = `Uploaded ${Math.min(99, (100 * successCnt / files.length)).toFixed(0)}%`;
           }
         }
       }
 
-      const uploads = Array.from({length: uploadLimit}, () => uploadWorker());
+      const resizeTask = Promise.all(Array.from({length: resizeLimit}, () => resizeWorker()));
+      const uploadsDone = Promise.all(Array.from({length: uploadLimit}, () => uploadWorker()));
       try {
-        await Promise.all(Array.from({length: resizeLimit}, () => resizeWorker()));
+        await presignedTask;
+        await resizeTask;
       } finally {
+        stopResize = true;
         resizedQueue.close();
-        await Promise.all(uploads);
+        await resizeTask;
+        await uploadsDone;
       }
       console.log(`Uploaded ${successCnt}/${files.length} images`);
       return successCnt;
@@ -749,18 +765,21 @@
     try {
       console.log("Requesting upload URL");
       uploadStatusTextElement.innerText = "Starting Upload";
-      const presignedURLResponse = await fetch(
-        "https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com/createSession",
-        {method: "POST", headers: {"Authorization": bearer}}
-      );
-      if (!presignedURLResponse.ok) {
-        console.error(`Unable to retrieve upload URL (error code ${presignedURLResponse.status})`);
-        throw new Error(presignedURLResponse.status);
-      }
-      const presignedURLData = await presignedURLResponse.json();
+      const presignedPromise = (async () => {
+        const presignedURLResponse = await fetch(
+          "https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com/createSession",
+          {method: "POST", headers: {"Authorization": bearer}}
+        );
+        if (!presignedURLResponse.ok) {
+          console.error(`Unable to retrieve upload URL (error code ${presignedURLResponse.status})`);
+          throw new Error(presignedURLResponse.status);
+        }
+        return presignedURLResponse.json();
+      })();
 
       console.log(`Starting upload of ${selectedFiles.length} photos`)
-      const numUploaded = await uploadFilesParallel(selectedFiles, presignedURLData.url, presignedURLData.fields);
+      const numUploaded = await uploadFilesParallel(selectedFiles, presignedPromise);
+      const presignedURLData = await presignedPromise;
       const successFrac = numUploaded / selectedFiles.length;
       if (successFrac < 0.9)
         throw new Error(`Session creation aborted due to partial upload (${numUploaded}/${selectedFiles.length})`);
