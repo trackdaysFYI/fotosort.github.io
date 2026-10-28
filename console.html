@@ -470,29 +470,95 @@
       uploadOptionsUIElement.style.display = "none";
     }
 
-    async function uploadFilesParallel(files, uploadURL, uploadFields) {
+    function createQueue(maxPending) {
+      const items = [];
+      const takeWaiters = [];
+      const pushWaiters = [];
+      let closed = false;
+      return {
+        async push(item) {
+          while (!closed && items.length >= maxPending) {
+            await new Promise(resolve => pushWaiters.push(resolve));
+          }
+          if (closed) return;
+          const waiter = takeWaiters.shift();
+          if (waiter) waiter(item);
+          else items.push(item);
+        },
+        close() {
+          closed = true;
+          while (takeWaiters.length) takeWaiters.shift()(null);
+          while (pushWaiters.length) pushWaiters.shift()();
+        },
+        shift() {
+          if (items.length) {
+            const item = items.shift();
+            const waiter = pushWaiters.shift();
+            if (waiter) waiter();
+            return Promise.resolve(item);
+          }
+          if (closed) return Promise.resolve(null);
+          return new Promise(resolve => takeWaiters.push(resolve));
+        }
+      };
+    }
+
+    async function uploadFilesParallel(files, presignedPromise) {
+      const resizeLimit = Math.min(4, files.length);  // decoded images in memory
+      const uploadLimit = Math.min(8, files.length);  // in-flight requests per host
+      const resizedQueue = createQueue(uploadLimit);
       let successCnt = 0;
-      const uploadPromises = files.map(file =>
-        uploadFile(file, uploadURL, uploadFields)
-          .then(success => {
-            if (success) {
-              successCnt++;
-              uploadStatusTextElement.innerText = `Uploaded ${Math.min(99, (100 * successCnt / files.length)).toFixed(0)}%`;
-            };
-          })
-      );
-      await Promise.all(uploadPromises);
+      let nextIndex = 0;
+      let stopResize = false;
+
+      async function resizeWorker() {
+        while (!stopResize && nextIndex < files.length) {
+          const file = files[nextIndex++];
+          try {
+            const resized = await resizeImage(file);
+            if (stopResize) return;
+            await resizedQueue.push(resized);
+          } catch (error) {
+            if (!stopResize) console.error(`Skipping unreadable image '${file.name}'`);
+          }
+        }
+      }
+
+      // rejecting the session request stops resize and drops anything still queued
+      const presignedTask = Promise.resolve(presignedPromise).then(data => data, error => {
+        stopResize = true;
+        resizedQueue.close();
+        throw error;
+      });
+
+      async function uploadWorker() {
+        const {url, fields} = await presignedTask;
+        while (true) {
+          const file = await resizedQueue.shift();
+          if (!file) return;
+          if (await uploadFile(file, url, fields)) {
+            successCnt++;
+            uploadStatusTextElement.innerText = `Uploaded ${Math.min(99, (100 * successCnt / files.length)).toFixed(0)}%`;
+          }
+        }
+      }
+
+      const resizeTask = Promise.all(Array.from({length: resizeLimit}, () => resizeWorker()));
+      const uploadsDone = Promise.all(Array.from({length: uploadLimit}, () => uploadWorker()));
+      try {
+        await presignedTask;
+        await resizeTask;
+      } finally {
+        stopResize = true;
+        resizedQueue.close();
+        await resizeTask;
+        await uploadsDone;
+      }
       console.log(`Uploaded ${successCnt}/${files.length} images`);
       return successCnt;
     }
 
     async function uploadFile(file, uploadURL, uploadFields, maxAttempts = 3) {
-      try {
-        file = await resizeImage(file);
-      } catch (error) {
-        console.error(`Skipping unreadable image '${file.name}'`);
-        return false;
-      }
       let postBody = new FormData()
       for (const key in uploadFields) {
         postBody.append(key, uploadFields[key]);
@@ -522,43 +588,37 @@
     }
 
     async function resizeImage(file, targetDim = 1920, quality = 0.8) {
-      return new Promise((resolve, reject) => {
-        const img = new Image();
-        const reader = new FileReader();
-        reader.onload = function (event) {
-          img.src = event.target.result;
-        };
-        img.onload = function () {
-          const origWidth = img.width;
-          const origHeight = img.height;
-          const maxDim = origWidth > origHeight ? origWidth : origHeight;
+      // "from-image" applies EXIF orientation, matching the previous Image() path
+      const bitmap = await createImageBitmap(file, {imageOrientation: "from-image"});
+      const origWidth = bitmap.width;
+      const origHeight = bitmap.height;
+      const maxDim = origWidth > origHeight ? origWidth : origHeight;
 
-          let newWidth = origWidth;
-          let newHeight = origHeight;
-          if (maxDim > targetDim) {
-            const scaleRatio = targetDim / maxDim;
-            newWidth = Math.round(newWidth * scaleRatio);
-            newHeight = Math.round(newHeight * scaleRatio);
-          }
+      let newWidth = origWidth;
+      let newHeight = origHeight;
+      if (maxDim > targetDim) {
+        const scaleRatio = targetDim / maxDim;
+        newWidth = Math.round(newWidth * scaleRatio);
+        newHeight = Math.round(newHeight * scaleRatio);
+      }
 
-          const canvas = document.createElement("canvas");
-          canvas.width = newWidth;
-          canvas.height = newHeight;
-          const ctx = canvas.getContext("2d");
-          ctx.drawImage(img, 0, 0, newWidth, newHeight);
-          canvas.toBlob(function (blob) {
-            // persist original file extension (.jpeg, .jpg, .JPG, etc)
-            const newFile = new File([blob], file.name + ".webp", {type: "image/webp"});
-            resolve(newFile);
-            console.log(`Resized '${file.name}' from ${origWidth}x${origHeight} to ${newWidth}x${newHeight} (${(file.size / 1024 / 1024).toFixed(2)} MB to ${(newFile.size / 1024 / 1024).toFixed(2)} MB)`)
-          }, "image/webp", quality);
-        };
-        img.onerror = function () {
-          reject(new Error());
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
+      const canvas = document.createElement("canvas");
+      canvas.width = newWidth;
+      canvas.height = newHeight;
+      const ctx = canvas.getContext("2d");
+      try {
+        ctx.drawImage(bitmap, 0, 0, newWidth, newHeight);
+      } finally {
+        bitmap.close();
+      }
+
+      const blob = await new Promise((resolve, reject) => {
+        canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error()), "image/webp", quality);
       });
+      // persist original file extension (.jpeg, .jpg, .JPG, etc)
+      const newFile = new File([blob], file.name + ".webp", {type: "image/webp"});
+      console.log(`Resized '${file.name}' from ${origWidth}x${origHeight} to ${newWidth}x${newHeight} (${(file.size / 1024 / 1024).toFixed(2)} MB to ${(newFile.size / 1024 / 1024).toFixed(2)} MB)`)
+      return newFile;
     }
 
     function filterInputFiles(files) {  // only allow jpg/jpeg
@@ -705,18 +765,21 @@
     try {
       console.log("Requesting upload URL");
       uploadStatusTextElement.innerText = "Starting Upload";
-      const presignedURLResponse = await fetch(
-        "https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com/createSession",
-        {method: "POST", headers: {"Authorization": bearer}}
-      );
-      if (!presignedURLResponse.ok) {
-        console.error(`Unable to retrieve upload URL (error code ${presignedURLResponse.status})`);
-        throw new Error(presignedURLResponse.status);
-      }
-      const presignedURLData = await presignedURLResponse.json();
+      const presignedPromise = (async () => {
+        const presignedURLResponse = await fetch(
+          "https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com/createSession",
+          {method: "POST", headers: {"Authorization": bearer}}
+        );
+        if (!presignedURLResponse.ok) {
+          console.error(`Unable to retrieve upload URL (error code ${presignedURLResponse.status})`);
+          throw new Error(presignedURLResponse.status);
+        }
+        return presignedURLResponse.json();
+      })();
 
       console.log(`Starting upload of ${selectedFiles.length} photos`)
-      const numUploaded = await uploadFilesParallel(selectedFiles, presignedURLData.url, presignedURLData.fields);
+      const numUploaded = await uploadFilesParallel(selectedFiles, presignedPromise);
+      const presignedURLData = await presignedPromise;
       const successFrac = numUploaded / selectedFiles.length;
       if (successFrac < 0.9)
         throw new Error(`Session creation aborted due to partial upload (${numUploaded}/${selectedFiles.length})`);
