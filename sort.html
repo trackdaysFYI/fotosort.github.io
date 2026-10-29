@@ -7,6 +7,8 @@
   <title>FotoSort</title>
   <link rel="icon" href="favicon.ico" type="image/x-icon">
   <script type="text/javascript" src="clusterer.js"></script>
+  <script src="https://cdn.auth0.com/js/auth0-spa-js/2.0/auth0-spa-js.production.js"></script>
+  <script src="auth.js"></script>
   
   <style>
     :root {
@@ -1035,8 +1037,13 @@
         if (skippedSourceNames.length) {  // add skipped images to unassigned group
           groupNameToPaths[groupNames[0]] = (groupNameToPaths[groupNames[0]] || []).concat(skippedSourceNames);
         }
-        fetch("https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com/saveSession", {
-          method: "POST", body: JSON.stringify({"sessionId": sessionId, "groupNameToExtIds": groupNameToExtIds})});
+        getBearer().then(authorization => {
+          fetch("https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com/saveSession", {
+            method: "POST",
+            headers: {"Authorization": authorization},
+            body: JSON.stringify({"sessionId": sessionId, "groupNameToExtIds": groupNameToExtIds})
+          });
+        }).catch(error => console.error(error));
         generateAndDownloadScript(groupNameToPaths, targetLinux);
       } catch (error) {
         console.error(error);

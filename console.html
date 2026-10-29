@@ -7,6 +7,7 @@
   <title>FotoSort - Console</title>
   <link rel="icon" href="favicon.ico" type="image/x-icon">
   <script src="https://cdn.auth0.com/js/auth0-spa-js/2.0/auth0-spa-js.production.js"></script>
+  <script src="auth.js"></script>
 
   <style>
     @font-face {
@@ -812,15 +813,7 @@
   });
 
   async function getAuth0Token() {
-    auth0Client = await auth0.createAuth0Client({
-      domain: "login.fotosort.com",
-      clientId: "t8MAyGQPxUK0k673gQc7O8zhf6XtrZoD",
-      cacheLocation: "localstorage",
-      authorizationParams: {
-        redirect_uri: window.location.origin + "/console.html",
-        audience: "https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com"
-      }
-    });
+    auth0Client = await getAuth0Client();
 
     const query = window.location.search;
     if (query.includes("code=") && query.includes("state=")) {
@@ -835,7 +828,7 @@
     }
     logoutButton.disabled = false;
 
-    const token = await auth0Client.getTokenSilently();
+    const token = await getAccessToken();
     bearer = `Bearer ${token}`;
     const tokenPayload = JSON.parse(atob(token.split('.')[1]));
     maxPhotos = tokenPayload["https://fotosort.com/photoLimit"];
