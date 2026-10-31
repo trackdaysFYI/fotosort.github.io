@@ -1349,13 +1349,13 @@
   let imgContainerIdToInfo = {};
   let skippedSourceNames = [];
 
-  async function fetchSessionAccess(id) {
+  async function fetchSession(id) {
     const authorization = await getBearer();
     const response = await fetch(
-      "https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com/getSessionAccess?sessionId=" + encodeURIComponent(id),
+      "https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com/getSession?sessionId=" + encodeURIComponent(id),
       {method: "GET", headers: {"Authorization": authorization}}
     );
-    if (!response.ok) throw new Error(`getSessionAccess HTTP ${response.status}`);
+    if (!response.ok) throw new Error(`getSession HTTP ${response.status}`);
     return response.json();
   }
 
@@ -1404,7 +1404,7 @@
   async function main() {
     try {
       if (!sessionId) throw new Error("missing sessionId");
-      const access = await fetchSessionAccess(sessionId);
+      const access = await fetchSession(sessionId);
       sessionName = access.name || "";
       sessionNameStd = sessionName.replace(/[^a-zA-Z0-9]/g, "");
       if (sessionName) document.title = sessionName;
