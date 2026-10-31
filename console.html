@@ -328,13 +328,6 @@
     }
 
     function updateSessionTable(sessionsData) {
-      localStorage.setItem("sessions", JSON.stringify(sessionsData
-        .filter(sessionData => sessionData["dataURL"] !== null)
-        .reduce((acc, sessionData) => {
-          acc[sessionData["id"]] = {"name": sessionData["name"], "dataUrl": sessionData["dataURL"]};
-          return acc;
-        }, {})
-      ));
       sessionTable.innerHTML = "";
       if (sessionsData.length == 0) {
         sessionTable.style.visibility = "hidden";
@@ -399,7 +392,7 @@
         deleteItem.textContent = "Delete";
 
         optionsCell.style.cursor = "default";  // nonclickable
-        if (sessionData["dataURL"]) {
+        if (sessionData["status"] === "Ready") {
           newRow.classList.add("clickable");
           newRow.addEventListener("click", () => {
             if (!optionsCell.contains(event.target)) {  // exclude optionsCell

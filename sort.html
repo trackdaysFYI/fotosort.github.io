@@ -1342,17 +1342,22 @@
 
   const urlParams = new URLSearchParams(window.location.search);
   const sessionId = urlParams.get("sessionId");
-  const sessionsData = JSON.parse(localStorage.getItem("sessions")) || null;
-  const sessionData = sessionsData ? sessionsData[sessionId] : null;
-  const sessionName = sessionData ? sessionData["name"] : "";
-  const sessionNameStd = sessionName.replace(/[^a-zA-Z0-9]/g, "");  // drop special characters
-  if (sessionName) {
-    document.title = sessionName;
-  }
+  let sessionName = "";
+  let sessionNameStd = "";
 
   let clusterer;
   let imgContainerIdToInfo = {};
   let skippedSourceNames = [];
+
+  async function fetchSessionAccess(id) {
+    const authorization = await getBearer();
+    const response = await fetch(
+      `https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com/getSessionAccess?sessionId=${encodeURIComponent(id)}`,
+      {method: "GET", headers: {"Authorization": authorization}}
+    );
+    if (!response.ok) throw new Error(`getSessionAccess HTTP ${response.status}`);
+    return response.json();
+  }
 
   async function loadData(url) {
     const data = await loadDataBIN(url);
@@ -1398,8 +1403,12 @@
 
   async function main() {
     try {
-      if (!sessionData) throw new Error;
-      await loadData(sessionData["dataUrl"]);
+      if (!sessionId) throw new Error("missing sessionId");
+      const access = await fetchSessionAccess(sessionId);
+      sessionName = access.name || "";
+      sessionNameStd = sessionName.replace(/[^a-zA-Z0-9]/g, "");
+      if (sessionName) document.title = sessionName;
+      await loadData(access.dataUrl);
       document.getElementById("loader").style.display = "none";
       document.getElementById("app").style.display = "";
     } catch (error) {
