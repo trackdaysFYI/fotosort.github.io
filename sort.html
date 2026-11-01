@@ -311,6 +311,86 @@
     let srcImgContainerId = null;  // not using dataTransfer api due to bug
     let srcGroupId = null;
 
+    function parseDataBINV1(arrayBuffer, dataView, decoder) {
+      if (arrayBuffer.byteLength < 29) throw new Error("data.bin is shorter than the v1 header");
+      const numSources = dataView.getUint16(1, true);
+      const numGroups = dataView.getUint16(3, true);
+      const minVal = dataView.getFloat32(5, true);
+      const maxVal = dataView.getFloat32(9, true);
+      const sourcesLen = dataView.getUint32(13, true);
+      const groupsLen = dataView.getUint32(17, true);
+      const distancesLen = dataView.getUint32(21, true);
+      const thumbnailsLen = dataView.getUint32(25, true);
+      if (arrayBuffer.byteLength !== 29 + sourcesLen + groupsLen + distancesLen + thumbnailsLen) {
+        throw new Error("data.bin length does not match section lengths");
+      }
+      if (distancesLen !== numGroups * (numGroups - 1)) {
+        throw new Error("distance section length does not match group count");
+      }
+
+      let cursor = 29;
+      const sourcesEnd = cursor + sourcesLen;
+      const idToSourceName = {};
+      const skippedSourceNames = [];
+      for (let i = 0; i < numSources; i += 1) {
+        if (cursor + 1 > sourcesEnd) throw new Error("sources section does not match its length");
+        const nameLength = dataView.getUint8(cursor); cursor += 1;
+        if (cursor + nameLength + 1 > sourcesEnd) throw new Error("sources section does not match its length");
+        const name = decoder.decode(new Uint8Array(arrayBuffer, cursor, nameLength)); cursor += nameLength;
+        const numNameIds = dataView.getUint8(cursor); cursor += 1;
+        if (cursor + numNameIds * 2 > sourcesEnd) throw new Error("sources section does not match its length");
+        if (!numNameIds) skippedSourceNames.push(name);
+        for (let j = 0; j < numNameIds; j += 1) {
+          idToSourceName[dataView.getUint16(cursor, true)] = name; cursor += 2;
+        }
+      }
+      if (cursor !== sourcesEnd) throw new Error("sources section does not match its length");
+
+      const groupsEnd = cursor + groupsLen;
+      const imageInfoArr = Array.from({length: numGroups}, () => ({}));
+      for (let i = 0; i < numGroups; i += 1) {
+        if (cursor + 2 > groupsEnd) throw new Error("groups section does not match its length");
+        const numIds = dataView.getUint16(cursor, true); cursor += 2;
+        if (numIds < 1) throw new Error("group must contain at least one crop");
+        if (cursor + numIds * 2 > groupsEnd) throw new Error("groups section does not match its length");
+        const ids = [];
+        for (let j = 0; j < numIds; j += 1) {
+          ids.push(dataView.getUint16(cursor, true)); cursor += 2;
+        }
+        imageInfoArr[i]["extIds"] = ids;
+      }
+      if (cursor !== groupsEnd) throw new Error("groups section does not match its length");
+
+      imageInfoArr.forEach(imageInfo => {
+        imageInfo["srcNames"] = imageInfo["extIds"].map(id => idToSourceName[id]);
+      });
+
+      const numPairs = distancesLen / 2;
+      const similarityVector = [];
+      for (let i = 0; i < numPairs; i += 1) {
+        similarityVector.push(dataView.getUint16(cursor, true) / 65535 * (maxVal - minVal) + minVal);
+        cursor += 2;
+      }
+
+      const thumbnailsEnd = cursor + thumbnailsLen;
+      if (cursor + numGroups * 4 > thumbnailsEnd) throw new Error("thumbnail section does not match its length");
+      const imageLengths = [];
+      for (let i = 0; i < numGroups; i += 1) {
+        imageLengths.push(dataView.getUint32(cursor, true)); cursor += 4;
+      }
+      let thumbnailBytes = 0;
+      for (const imageLength of imageLengths) thumbnailBytes += imageLength;
+      if (numGroups * 4 + thumbnailBytes !== thumbnailsLen) throw new Error("thumbnail section does not match its length");
+      for (let i = 0; i < numGroups; i += 1) {
+        const imageLength = imageLengths[i];
+        if (cursor + imageLength > thumbnailsEnd) throw new Error("thumbnail section does not match its length");
+        imageInfoArr[i]["imgData"] = new Uint8Array(arrayBuffer, cursor, imageLength); cursor += imageLength;
+      }
+      if (cursor !== thumbnailsEnd) throw new Error("thumbnail section does not match its length");
+
+      return {imageInfoArr, similarityVector, skippedSourceNames};
+    }
+
     async function loadDataBIN(url) { 
       const response = await fetch(url);
       const arrayBuffer = await response.arrayBuffer();
@@ -319,6 +399,7 @@
 
       let cursor = 0;
       const version = dataView.getUint8(cursor, true); cursor += 1;
+      if (version === 1) return parseDataBINV1(arrayBuffer, dataView, decoder);
       if (version !== 0) throw new Error("unsupported data.bin format version: " + version);
 
       const numImages = dataView.getUint16(cursor, true); cursor += 2;
