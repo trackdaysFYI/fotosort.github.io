@@ -319,6 +319,7 @@
 
       let cursor = 0;
       const version = dataView.getUint8(cursor, true); cursor += 1;
+      if (version !== 0) throw new Error("unsupported data.bin format version: " + version);
 
       const numImages = dataView.getUint16(cursor, true); cursor += 2;
       const imageInfoArr = Array.from({length: numImages}, () => ({}));
