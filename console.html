@@ -283,6 +283,52 @@
     .center {
       text-align: center;
     }
+
+    #sorter-dialog {
+      border: none;
+      border-radius: 10px;
+      padding: 0;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+      max-width: 260px;
+      width: calc(100% - 32px);
+    }
+    #sorter-dialog::backdrop {
+      background: rgba(0, 0, 0, 0.4);
+    }
+    #sorter-dialog form {
+      margin: 0;
+      padding: 16px 16px 14px;
+      text-align: center;
+    }
+    #sorter-dialog h2 {
+      margin: 0 0 4px;
+      font-size: 18px;
+    }
+    #sorter-dialog p {
+      margin: 0 0 12px;
+      color: dimgray;
+      font-size: 13px;
+    }
+    #sorter-dialog .sorter-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    #sorter-dialog .sorter-actions button {
+      width: 100%;
+      padding: 8px;
+      font-size: 14px;
+    }
+    #sorter-dialog label.remember {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: #333;
+      cursor: pointer;
+      user-select: none;
+    }
   </style>
 
   <script>
@@ -426,7 +472,7 @@
         if (sessionData["status"] === "Ready") {
           newRow.classList.add("clickable");
           newRow.addEventListener("click", () => {
-            window.open(`sort.html?sessionId=${sessionData["id"]}`, "_blank");
+            openSession(sessionData["id"]);
           });
         }
 
@@ -713,6 +759,21 @@
     </div>
   </main>
 
+  <dialog id="sorter-dialog">
+    <form method="dialog" id="sorter-form">
+      <h2>Open session</h2>
+      <p>Which sorter do you want to use?</p>
+      <div class="sorter-actions">
+        <button type="submit" value="studio" class="styled orange">Studio (new)</button>
+        <button type="submit" value="sort" class="styled blue">Classic</button>
+      </div>
+      <label class="remember">
+        <input type="checkbox" id="sorter-remember">
+        Remember my choice
+      </label>
+    </form>
+  </dialog>
+
   <footer>
     <small>© 2025–2026 FotoSort.com | <a href="legal.html">Terms of Service & Privacy Policy</a> | <a href="mailto:support@fotosort.com">support@fotosort.com</a></small>
   </footer>
@@ -740,6 +801,54 @@
   const refreshButtonElement = document.getElementById("refresh-button");
   const sessionTable = document.getElementById("session-table");
   const sessionInfoText = document.getElementById("session-info");
+
+  const SORTER_PREF_KEY = "fotosort-sorter";
+  const SORTERS = {studio: "studio.html", sort: "sort.html"};
+  const sorterDialog = document.getElementById("sorter-dialog");
+  const sorterForm = document.getElementById("sorter-form");
+  const sorterRemember = document.getElementById("sorter-remember");
+  let pendingSessionId = null;
+
+  function getSorterPref() {
+    const value = localStorage.getItem(SORTER_PREF_KEY);
+    return value in SORTERS ? value : null;
+  }
+
+  function openSorter(sessionId, sorter) {
+    const page = SORTERS[sorter];
+    if (!page) return;
+    window.open(`${page}?sessionId=${encodeURIComponent(sessionId)}`, "_blank");
+  }
+
+  function openSession(sessionId) {
+    const pref = getSorterPref();
+    if (pref) {
+      openSorter(sessionId, pref);
+      return;
+    }
+    pendingSessionId = sessionId;
+    sorterRemember.checked = false;
+    sorterDialog.showModal();
+  }
+
+  sorterForm.addEventListener("submit", (event) => {
+    const sorter = event.submitter && event.submitter.value;
+    const sessionId = pendingSessionId;
+    pendingSessionId = null;
+    if (!sessionId || !SORTERS[sorter]) return;
+    if (sorterRemember.checked) localStorage.setItem(SORTER_PREF_KEY, sorter);
+    openSorter(sessionId, sorter);
+  });
+
+  sorterDialog.addEventListener("cancel", () => {
+    pendingSessionId = null;
+  });
+
+  sorterDialog.addEventListener("click", (event) => {
+    if (event.target !== sorterDialog) return;
+    pendingSessionId = null;
+    sorterDialog.close();
+  });
 
   refreshButtonElement.addEventListener("click", function () {
     refreshSessions();
