@@ -814,6 +814,8 @@
     } catch (error) {
       console.error(error);
       uploadStatusTextElement.innerText = "Upload Failed" + (error == "Error: 403" ? " - Account Disabled" : "");
+      uploadButtonElement.disabled = false;
+      sessionNameInputElement.disabled = false;
     }
 
     // enable modifying elements
