@@ -327,6 +327,19 @@
         });
     }
 
+    function closeSessionMenus() {
+      sessionTable.querySelectorAll(".dropdown-menu").forEach(menu => {
+        menu.style.display = "none";
+      });
+    }
+
+    let sessionMenuCloserBound = false;
+    function bindSessionMenuCloser() {
+      if (sessionMenuCloserBound) return;
+      sessionMenuCloserBound = true;
+      document.addEventListener("click", closeSessionMenus);
+    }
+
     function updateSessionTable(sessionsData) {
       sessionTable.innerHTML = "";
       if (sessionsData.length == 0) {
@@ -335,6 +348,7 @@
         return;
       }
       sessionTable.style.visibility = "visible";  // req'd if table is populated from empty
+      bindSessionMenuCloser();
 
       const currentTime = new Date();
       const currentTimeFormatted = currentTime.toLocaleString("en-US", {hour: "numeric", minute: "numeric", second: "numeric", hour12: true});
@@ -401,14 +415,11 @@
           });
         }
 
-        optionsButton.addEventListener("click", () => {
-          optionsMenu.style.display = (optionsMenu.style.display === "block" ? "none" : "block");
-        });
-
-        document.addEventListener("click", (e) => {
-          if (!optionsButton.contains(e.target) && !optionsMenu.contains(e.target)) {
-            optionsMenu.style.display = "none";
-          }
+        optionsButton.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const willOpen = optionsMenu.style.display !== "block";
+          closeSessionMenus();
+          if (willOpen) optionsMenu.style.display = "block";
         });
 
         renameItem.addEventListener("click", function() {
