@@ -406,12 +406,13 @@
         deleteItem.textContent = "Delete";
 
         optionsCell.style.cursor = "default";  // nonclickable
+        optionsCell.addEventListener("click", (event) => {
+          event.stopPropagation();
+        });
         if (sessionData["status"] === "Ready") {
           newRow.classList.add("clickable");
-          newRow.addEventListener("click", (event) => {
-            if (!optionsCell.contains(event.target)) {  // exclude optionsCell
-              window.open(`sort.html?sessionId=${sessionData["id"]}`, "_blank");
-            }
+          newRow.addEventListener("click", () => {
+            window.open(`sort.html?sessionId=${sessionData["id"]}`, "_blank");
           });
         }
 
