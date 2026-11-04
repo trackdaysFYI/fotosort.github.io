@@ -376,7 +376,9 @@
         statusCell.setAttribute("data-label", "Status");
         optionsCell.setAttribute("data-label", "Options");
 
-        nameCell.innerText = sessionData["name"];
+        const sessionLabel = (sessionData["name"] || "").trim() || "<unnamed>";
+        nameCell.textContent = sessionLabel;
+        if (!(sessionData["name"] || "").trim()) nameCell.style.color = "dimgray";
         nameCell.title = sessionData["id"].slice(0, 8);
         numPhotosCell.innerText = sessionData["numPhotos"];
         if (sessionData["numCrops"]) {
@@ -425,23 +427,24 @@
 
         renameItem.addEventListener("click", function() {
           optionsMenu.style.display = "none";
-          const newName = prompt("New Session Name:", sessionData["name"]);
-          if (newName != null && newName != sessionData["name"]) {
-            console.log(`Renaming session ${sessionData["id"]} to '${newName}'`);
-            hideSessions();
-            fetch(`https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com/modifySession`, 
-              {method: "PATCH", headers: {"Authorization": bearer}, body: JSON.stringify({"sessionId": sessionData["id"], "action": "rename", "newName": newName})})
-              .then(response => {if (response.ok) {refreshSessions();} else {throw new Error(response.status);}})
-              .catch(error => {
-                alert(`Rename Failed (Error ${error.message})`);
-                showSessions();
-              });
-          }
+          const entered = prompt("New Session Name:", sessionData["name"]);
+          if (entered == null) return;
+          const newName = entered.trim().slice(0, 32);
+          if (newName === (sessionData["name"] || "")) return;
+          console.log(`Renaming session ${sessionData["id"]} to '${newName}'`);
+          hideSessions();
+          fetch(`https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com/modifySession`, 
+            {method: "PATCH", headers: {"Authorization": bearer}, body: JSON.stringify({"sessionId": sessionData["id"], "action": "rename", "newName": newName})})
+            .then(response => {if (response.ok) {refreshSessions();} else {throw new Error(response.status);}})
+            .catch(error => {
+              alert(`Rename Failed (Error ${error.message})`);
+              showSessions();
+            });
         });
 
         deleteItem.addEventListener("click", function() {
           optionsMenu.style.display = "none";
-          const deleteSession = confirm(`Delete session '${sessionData["name"] ? sessionData["name"] : sessionData["id"].slice(0, 8)}'?`);
+          const deleteSession = confirm(`Delete session '${sessionLabel}'?`);
           if (deleteSession) {
             console.log(`Deleting session ${sessionData["id"]}`);
             hideSessions();
