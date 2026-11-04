@@ -585,8 +585,8 @@
     }
 
     async function uploadFilesParallel(files, presignedPromise) {
-      const resizeLimit = Math.min(4, files.length);  // decoded images in memory
-      const uploadLimit = Math.min(8, files.length);  // in-flight requests per host
+      const resizeLimit = Math.min(8, files.length);  // decoded images in memory
+      const uploadLimit = Math.min(16, files.length);  // in-flight requests per host
       const resizedQueue = createQueue(uploadLimit);
       let successCnt = 0;
       let nextIndex = 0;
