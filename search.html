@@ -1,0 +1,881 @@
+<!doctype html>
+<!-- © 2025–2026 FotoSort.com -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Find similar photos in a FotoSort session">
+  <title>FotoSort - Search</title>
+  <link rel="icon" href="favicon.ico" type="image/x-icon">
+  <script src="https://cdn.auth0.com/js/auth0-spa-js/2.0/auth0-spa-js.production.js"></script>
+  <script src="auth.js"></script>
+  <style>
+    @font-face {
+      font-family: "FunnelSans";
+      src: url("fonts/FunnelSans-Regular.ttf");
+    }
+
+    * { box-sizing: border-box; font-family: "FunnelSans", sans-serif; }
+
+    body {
+      margin: 0;
+      color: #222;
+      background: #f3f3f3;
+    }
+
+    main {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 16px 16px 32px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .logo {
+      color: #111;
+      font-size: 28px;
+      font-weight: 700;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    h1 { font-size: 22px; margin: 8px 0 14px; }
+
+    label.field {
+      display: block;
+      font-size: 14px;
+      margin: 0 0 12px;
+    }
+
+    select, button, input { font: inherit; }
+
+    select {
+      display: block;
+      width: 100%;
+      margin-top: 4px;
+      padding: 10px;
+      font-size: 16px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .cam {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      margin-bottom: 8px;
+      padding: 12px;
+      color: #fff;
+      background: #FE621D;
+      border-radius: 10px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    .cam input { display: none; }
+    .cam.locked { background: #b9b9b9; cursor: not-allowed; }
+
+    .drop {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 56px;
+      margin-bottom: 12px;
+      padding: 12px;
+      border: 2px dashed #ccc;
+      border-radius: 10px;
+      background: #fff;
+      text-align: center;
+      cursor: pointer;
+    }
+    .drop.over { border-color: #0047ab; background: #e6f0ff; }
+    .drop.locked { color: #888; background: #f3f3f3; cursor: not-allowed; }
+    .drop input { display: none; }
+
+    .hint {
+      margin: -4px 0 12px;
+      padding: 8px 10px;
+      color: #9a3412;
+      background: #fff4ed;
+      border: 1px solid #fdba74;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+
+    .sliders {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 520px) {
+      .sliders { grid-template-columns: 1fr; }
+    }
+    input[type="range"] {
+      display: block;
+      width: 100%;
+      margin-top: 6px;
+      accent-color: #FE621D;
+    }
+    .field b { font-weight: 700; }
+
+    #search {
+      width: 100%;
+      padding: 12px;
+      color: #fff;
+      background: #FE621D;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    #search:disabled { background: #888; cursor: default; }
+
+    #status-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 1.3em;
+      margin: 10px 0;
+      color: #555;
+      font-size: 14px;
+    }
+    .spinner {
+      display: none;
+      width: 16px;
+      height: 16px;
+      flex: none;
+      border: 2px solid #ddd;
+      border-top-color: #FE621D;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    #status-row.busy .spinner { display: block; }
+    #status-row.error {
+      color: #9f1239;
+      background: #fff1f2;
+      border: 1px solid #fda4af;
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .stage {
+      position: relative;
+      display: none;
+      width: fit-content;
+      max-width: 100%;
+      margin: 0 auto 12px;
+      touch-action: none;
+      user-select: none;
+    }
+    .stage.show { display: block; }
+    .stage img {
+      display: block;
+      max-width: 100%;
+      height: auto;
+    }
+
+    .box {
+      position: absolute;
+      border: 2px solid #FE621D;
+      box-shadow: 0 0 0 1px #fff;
+      cursor: move;
+    }
+    .handle {
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      background: #FE621D;
+      border: 2px solid #fff;
+      border-radius: 3px;
+    }
+    .handle.nw { left: -9px; top: -9px; cursor: nwse-resize; }
+    .handle.ne { right: -9px; top: -9px; cursor: nesw-resize; }
+    .handle.sw { left: -9px; bottom: -9px; cursor: nesw-resize; }
+    .handle.se { right: -9px; bottom: -9px; cursor: nwse-resize; }
+
+    .matches {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .matches figure {
+      margin: 0;
+      background: #fff;
+      border-radius: 8px;
+      overflow: hidden;
+      cursor: pointer;
+    }
+    .matches img { display: block; width: 100%; height: auto; }
+    .matches figcaption {
+      padding: 6px 8px;
+      font-size: 12px;
+      color: #555;
+    }
+
+    footer {
+      margin: 24px 0 8px;
+      text-align: center;
+      font-size: 12px;
+      color: #666;
+    }
+
+    #viewer {
+      border: none;
+      padding: 0;
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      max-width: none;
+      max-height: none;
+      overflow: hidden;
+      background: #111;
+      color: #fff;
+    }
+    #viewer::backdrop { background: #111; }
+    #viewer[open] { display: flex; flex-direction: column; }
+    .viewer-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      font-size: 14px;
+    }
+    #viewer-close {
+      background: transparent;
+      color: #fff;
+      border: none;
+      padding: 8px 4px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    .viewer-stage {
+      position: relative;
+      flex: 1;
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      touch-action: none;
+    }
+    #viewer-img {
+      max-width: 100%;
+      max-height: 100%;
+      min-width: 0;
+      min-height: 0;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+    .nav {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 44px;
+      height: 44px;
+      border: none;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.18);
+      color: #fff;
+      font-size: 28px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .nav:disabled { opacity: 0.25; cursor: default; }
+    .nav.prev { left: 8px; }
+    .nav.next { right: 8px; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <a class="logo" href="console.html">
+        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="#FE621D" aria-hidden="true">
+          <path d="M12 8c-2.168 0-4 1.832-4 4s1.832 4 4 4 4-1.832 4-4-1.832-4-4-4zm0 6c-1.065 0-2-.935-2-2s.935-2 2-2 2 .935 2 2-.935 2-2 2z"/>
+          <path d="M20 5h-2.586l-2.707-2.707A.996.996 0 0 0 14 2h-4a.996.996 0 0 0-.707.293L6.586 5H4c-1.103 0-2 .897-2 2v11c0 1.103.897 2 2 2h16c1.103 0 2-.897 2-2V7c0-1.103-.897-2-2-2zM4 18V7h3c.266 0 .52-.105.707-.293L10.414 4h3.172l2.707 2.707A.996.996 0 0 0 17 7h3l.002 11H4z"/>
+        </svg>
+        FotoSort
+      </a>
+    </header>
+    <h1>Find similar</h1>
+
+    <label class="field">Session
+      <select id="session" disabled>
+        <option value="">Loading sessions…</option>
+      </select>
+    </label>
+
+    <p id="need-session" class="hint">Select a session before taking or choosing a photo.</p>
+    <label class="cam locked" id="camera-label">
+      <input id="camera" type="file" accept="image/jpeg" capture="environment" disabled>
+      Take photo
+    </label>
+    <label class="drop locked" id="drop">
+      <input id="file" type="file" accept="image/jpeg,.jpg,.jpeg" disabled>
+      <span id="drop-label">Or choose a JPEG</span>
+    </label>
+
+    <div class="sliders">
+      <label class="field">Max photos to retrieve <b id="k-value">50</b>
+        <input id="k" type="range" min="10" max="200" step="10" value="50">
+      </label>
+      <label class="field">Threshold <b id="threshold-value">0.60</b>
+        <input id="threshold" type="range" min="0.1" max="1" step="0.05" value="0.6" title="Maximum match distance. Lower keeps closer photos.">
+      </label>
+    </div>
+
+    <div id="status-row">
+      <span class="spinner" aria-hidden="true"></span>
+      <div id="status"></div>
+    </div>
+    <div class="stage" id="stage">
+      <img id="photo" alt="Uploaded photo">
+      <div class="box" id="box" hidden>
+        <span class="handle nw" data-handle="nw"></span>
+        <span class="handle ne" data-handle="ne"></span>
+        <span class="handle sw" data-handle="sw"></span>
+        <span class="handle se" data-handle="se"></span>
+      </div>
+    </div>
+    <button id="search" type="button" disabled>Search</button>
+    <div class="matches" id="matches"></div>
+    <footer>© 2025–2026 FotoSort.com</footer>
+  </main>
+
+  <dialog id="viewer">
+    <div class="viewer-bar">
+      <span id="viewer-caption"></span>
+      <button id="viewer-close" type="button">Close</button>
+    </div>
+    <div class="viewer-stage" id="viewer-stage">
+      <button class="nav prev" id="viewer-prev" type="button" aria-label="Previous">‹</button>
+      <img id="viewer-img" alt="">
+      <button class="nav next" id="viewer-next" type="button" aria-label="Next">›</button>
+    </div>
+  </dialog>
+
+  <script>
+    const API = "https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com";
+    const MIN_BOX = 0.03;
+
+    const sessionSelect = document.getElementById("session");
+    const fileInput = document.getElementById("file");
+    const cameraInput = document.getElementById("camera");
+    const cameraLabel = document.getElementById("camera-label");
+    const needSession = document.getElementById("need-session");
+    const drop = document.getElementById("drop");
+    const dropLabel = document.getElementById("drop-label");
+    const statusRow = document.getElementById("status-row");
+    const statusEl = document.getElementById("status");
+    const kInput = document.getElementById("k");
+    const kValue = document.getElementById("k-value");
+    const thresholdInput = document.getElementById("threshold");
+    const thresholdValue = document.getElementById("threshold-value");
+    const stage = document.getElementById("stage");
+    const photo = document.getElementById("photo");
+    const boxEl = document.getElementById("box");
+    const searchBtn = document.getElementById("search");
+    const matchesEl = document.getElementById("matches");
+    const viewer = document.getElementById("viewer");
+    const viewerImg = document.getElementById("viewer-img");
+    const viewerCaption = document.getElementById("viewer-caption");
+    const viewerPrev = document.getElementById("viewer-prev");
+    const viewerNext = document.getElementById("viewer-next");
+    const viewerStage = document.getElementById("viewer-stage");
+
+    let bearer = null;
+    let imageFile = null;
+    let imagePath = null;
+    let previewUrl = null;
+    let box = null;
+    let submittedBox = null;
+    let submittedK = null;
+    let submittedThreshold = null;
+    let hasResults = false;
+    let busy = false;
+    let drag = null;
+    let currentMatches = [];
+    let viewerIndex = 0;
+    let swipe = null;
+
+    function setStatus(text) {
+      statusRow.classList.remove("error");
+      statusEl.textContent = text;
+    }
+
+    function setError(err) {
+      const message = err && err.message ? err.message : "";
+      statusRow.classList.add("error");
+      if (!message || message === "Failed to fetch") {
+        statusEl.textContent = "Search failed. Check your connection and try again.";
+      } else if (message.startsWith("Search failed")) {
+        statusEl.textContent = message;
+      } else {
+        statusEl.textContent = `Search failed. ${message}`;
+      }
+    }
+
+    function roundBox(value) {
+      return value.map(n => Math.round(n * 10000) / 10000);
+    }
+
+    function boxesEqual(a, b) {
+      if (!a || !b) return false;
+      return a.every((n, i) => Math.abs(n - b[i]) < 0.0005);
+    }
+
+    function normalizeBox(x1, y1, x2, y2) {
+      x1 = Math.min(1, Math.max(0, x1));
+      y1 = Math.min(1, Math.max(0, y1));
+      x2 = Math.min(1, Math.max(0, x2));
+      y2 = Math.min(1, Math.max(0, y2));
+      if (x2 < x1) [x1, x2] = [x2, x1];
+      if (y2 < y1) [y1, y2] = [y2, y1];
+      if (x2 - x1 < MIN_BOX) {
+        if (x1 + MIN_BOX <= 1) x2 = x1 + MIN_BOX;
+        else x1 = x2 - MIN_BOX;
+      }
+      if (y2 - y1 < MIN_BOX) {
+        if (y1 + MIN_BOX <= 1) y2 = y1 + MIN_BOX;
+        else y1 = y2 - MIN_BOX;
+      }
+      return [x1, y1, x2, y2];
+    }
+
+    function paintBox() {
+      if (!box) return;
+      const [x1, y1, x2, y2] = box;
+      boxEl.style.left = (x1 * 100) + "%";
+      boxEl.style.top = (y1 * 100) + "%";
+      boxEl.style.width = ((x2 - x1) * 100) + "%";
+      boxEl.style.height = ((y2 - y1) * 100) + "%";
+    }
+
+    function setBox(next) {
+      box = normalizeBox(next[0], next[1], next[2], next[3]);
+      paintBox();
+      syncButton();
+    }
+
+    function selectedK() {
+      return Number(kInput.value);
+    }
+
+    function selectedThreshold() {
+      return Number(thresholdInput.value);
+    }
+
+    function syncSliderLabels() {
+      kValue.textContent = String(selectedK());
+      thresholdValue.textContent = selectedThreshold().toFixed(2);
+    }
+
+    function searchDirty() {
+      if (!boxesEqual(box, submittedBox)) return true;
+      return selectedK() !== submittedK || Math.abs(selectedThreshold() - submittedThreshold) > 0.001;
+    }
+
+    function syncButton() {
+      const hasSession = Boolean(sessionSelect.value);
+      const blockUpload = busy || !hasSession;
+      cameraInput.disabled = blockUpload;
+      fileInput.disabled = blockUpload;
+      cameraLabel.classList.toggle("locked", !hasSession);
+      drop.classList.toggle("locked", !hasSession);
+      needSession.hidden = hasSession;
+      const ready = hasSession && imageFile && !busy;
+      if (!hasResults) {
+        searchBtn.textContent = "Search";
+        searchBtn.disabled = !ready;
+      } else {
+        searchBtn.textContent = "Search again";
+        searchBtn.disabled = !ready || !searchDirty();
+      }
+    }
+
+    function setBusy(next) {
+      busy = next;
+      statusRow.classList.toggle("busy", next);
+      sessionSelect.disabled = next;
+      kInput.disabled = next;
+      thresholdInput.disabled = next;
+      syncButton();
+    }
+
+    async function readBody(response) {
+      const text = await response.text();
+      if (!text) return null;
+      try { return JSON.parse(text); } catch (err) { return null; }
+    }
+
+    async function api(path, options) {
+      const response = await fetch(API + path, options);
+      const data = await readBody(response);
+      if (!response.ok) {
+        const fallback = {
+          401: "Unauthorized",
+          403: "Not allowed",
+          404: "Session not found",
+          409: "Session is not ready",
+          413: "Photo is too large",
+          422: "Could not use that box",
+          502: "Search failed"
+        }[response.status] || `Request failed (${response.status})`;
+        throw new Error((data && data.error) || fallback);
+      }
+      return data;
+    }
+
+    async function findSimilar(body) {
+      return api("/findSimilar", {
+        method: "POST",
+        headers: {"Authorization": bearer},
+        body: JSON.stringify(body)
+      });
+    }
+
+    async function resizeImage(file, targetDim = 1920, quality = 0.8) {
+      const bitmap = await createImageBitmap(file, {imageOrientation: "from-image"});
+      const maxDim = Math.max(bitmap.width, bitmap.height);
+      let width = bitmap.width;
+      let height = bitmap.height;
+      if (maxDim > targetDim) {
+        const scale = targetDim / maxDim;
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      try {
+        ctx.drawImage(bitmap, 0, 0, width, height);
+      } finally {
+        bitmap.close();
+      }
+      const blob = await new Promise((resolve, reject) => {
+        canvas.toBlob(result => result ? resolve(result) : reject(new Error("Could not resize photo")), "image/webp", quality);
+      });
+      return new File([blob], file.name + ".webp", {type: "image/webp"});
+    }
+
+    function isJpeg(file) {
+      if (file.type === "image/jpeg") return true;
+      const name = file.name.toLowerCase();
+      return name.endsWith(".jpg") || name.endsWith(".jpeg");
+    }
+
+    function showPreview(file) {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      previewUrl = URL.createObjectURL(file);
+      photo.src = previewUrl;
+      stage.classList.add("show");
+      boxEl.hidden = true;
+      box = null;
+      submittedBox = null;
+      hasResults = false;
+      imagePath = null;
+      matchesEl.replaceChildren();
+      currentMatches = [];
+      closeViewer();
+      syncButton();
+    }
+
+    async function useFile(file, autoSearch) {
+      if (!file || !isJpeg(file)) {
+        setStatus("Choose a JPEG photo.");
+        return;
+      }
+      setBusy(true);
+      setStatus("Preparing photo…");
+      let searchNow = false;
+      try {
+        imageFile = await resizeImage(file);
+        dropLabel.textContent = file.name || "Camera photo";
+        showPreview(imageFile);
+        searchNow = Boolean(autoSearch && sessionSelect.value);
+        setStatus(searchNow ? "Photo ready." : autoSearch ? "Photo ready. Select a session to search." : "Photo ready.");
+      } catch (err) {
+        console.error(err);
+        imageFile = null;
+        setStatus("Could not read that photo.");
+      } finally {
+        setBusy(false);
+      }
+      if (searchNow) runSearch(false);
+    }
+
+    function closeViewer() {
+      swipe = null;
+      if (viewer.open) viewer.close();
+      viewerImg.removeAttribute("src");
+    }
+
+    function showViewer(index) {
+      if (!currentMatches.length || index < 0 || index >= currentMatches.length) return;
+      viewerIndex = index;
+      const match = currentMatches[viewerIndex];
+      viewerImg.src = match.url;
+      viewerImg.alt = match.imagePath || "Match";
+      const distance = Number(match.distance);
+      const place = `${viewerIndex + 1} / ${currentMatches.length}`;
+      viewerCaption.textContent = Number.isFinite(distance) ? `${place} · ${distance.toFixed(3)}` : place;
+      viewerPrev.disabled = viewerIndex === 0;
+      viewerNext.disabled = viewerIndex === currentMatches.length - 1;
+      if (!viewer.open) viewer.showModal();
+    }
+
+    function renderMatches(matches) {
+      matchesEl.replaceChildren();
+      currentMatches = matches.slice();
+      if (!currentMatches.length) {
+        setStatus("No matches.");
+        return;
+      }
+      currentMatches.forEach((match, index) => {
+        const figure = document.createElement("figure");
+        const img = document.createElement("img");
+        img.src = match.url;
+        img.alt = match.imagePath || "Match";
+        const caption = document.createElement("figcaption");
+        const distance = Number(match.distance);
+        caption.textContent = Number.isFinite(distance) ? distance.toFixed(3) : (match.imagePath || "");
+        figure.append(img, caption);
+        figure.addEventListener("click", () => showViewer(index));
+        matchesEl.append(figure);
+      });
+      setStatus(currentMatches.length === 1 ? "1 match" : `${currentMatches.length} matches`);
+    }
+
+    function applyResult(data) {
+      const returned = Array.isArray(data.queryBBox) && data.queryBBox.length === 4
+        ? data.queryBBox.map(Number)
+        : [0, 0, 1, 1];
+      hasResults = true;
+      submittedBox = returned.slice();
+      submittedK = selectedK();
+      submittedThreshold = selectedThreshold();
+      boxEl.hidden = false;
+      setBox(returned);
+      renderMatches(data.matches || []);
+      if (!data.queryBBox) setStatus(statusEl.textContent + " · no subject box, adjust and search again");
+    }
+
+    async function runSearch(withBox) {
+      const sessionId = sessionSelect.value;
+      if (!sessionId || !imageFile || busy) return;
+      setBusy(true);
+      closeViewer();
+      matchesEl.replaceChildren();
+      currentMatches = [];
+      try {
+        if (!imagePath) {
+          setStatus("Requesting upload…");
+          const init = await findSimilar({sessionId});
+          setStatus("Uploading…");
+          const postBody = new FormData();
+          for (const key in init.upload.fields) postBody.append(key, init.upload.fields[key]);
+          postBody.append("file", imageFile);
+          const uploaded = await fetch(init.upload.url, {method: "POST", body: postBody});
+          if (!uploaded.ok) throw new Error(`Upload failed (${uploaded.status})`);
+          imagePath = init.imagePath;
+        }
+        setStatus("Searching…");
+        const body = {sessionId, imagePath, topK: selectedK(), maxDistance: selectedThreshold()};
+        if (withBox && box) body.queryBBox = roundBox(box);
+        applyResult(await findSimilar(body));
+      } catch (err) {
+        console.error(err);
+        setError(err);
+        syncButton();
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    function clientToNorm(event) {
+      const rect = stage.getBoundingClientRect();
+      return [
+        (event.clientX - rect.left) / rect.width,
+        (event.clientY - rect.top) / rect.height
+      ];
+    }
+
+    boxEl.addEventListener("pointerdown", (event) => {
+      if (!box || busy) return;
+      event.preventDefault();
+      const [x, y] = clientToNorm(event);
+      drag = {mode: event.target.dataset.handle || "move", x, y, box: box.slice()};
+      boxEl.setPointerCapture(event.pointerId);
+    });
+
+    boxEl.addEventListener("pointermove", (event) => {
+      if (!drag) return;
+      const [x, y] = clientToNorm(event);
+      const dx = x - drag.x;
+      const dy = y - drag.y;
+      let [x1, y1, x2, y2] = drag.box;
+      if (drag.mode === "move") {
+        const w = x2 - x1;
+        const h = y2 - y1;
+        x1 += dx;
+        y1 += dy;
+        x2 = x1 + w;
+        y2 = y1 + h;
+        if (x1 < 0) { x2 -= x1; x1 = 0; }
+        if (y1 < 0) { y2 -= y1; y1 = 0; }
+        if (x2 > 1) { x1 -= x2 - 1; x2 = 1; }
+        if (y2 > 1) { y1 -= y2 - 1; y2 = 1; }
+        setBox([x1, y1, x2, y2]);
+      } else {
+        if (drag.mode.includes("w")) x1 += dx;
+        if (drag.mode.includes("e")) x2 += dx;
+        if (drag.mode.includes("n")) y1 += dy;
+        if (drag.mode.includes("s")) y2 += dy;
+        setBox([x1, y1, x2, y2]);
+      }
+    });
+
+    boxEl.addEventListener("pointerup", () => { drag = null; });
+    boxEl.addEventListener("pointercancel", () => { drag = null; });
+
+    sessionSelect.addEventListener("change", () => {
+      hasResults = false;
+      submittedBox = null;
+      boxEl.hidden = true;
+      matchesEl.replaceChildren();
+      currentMatches = [];
+      closeViewer();
+      if (imageFile) setStatus("Photo ready.");
+      syncButton();
+    });
+
+    kInput.addEventListener("input", () => {
+      syncSliderLabels();
+      syncButton();
+    });
+    thresholdInput.addEventListener("input", () => {
+      syncSliderLabels();
+      syncButton();
+    });
+
+    document.getElementById("viewer-close").addEventListener("click", closeViewer);
+    viewerPrev.addEventListener("click", () => showViewer(viewerIndex - 1));
+    viewerNext.addEventListener("click", () => showViewer(viewerIndex + 1));
+    viewer.addEventListener("cancel", () => { swipe = null; });
+    viewer.addEventListener("click", (event) => {
+      if (event.target === viewer) closeViewer();
+    });
+
+    viewerStage.addEventListener("pointerdown", (event) => {
+      if (event.target.closest("button")) return;
+      swipe = {x: event.clientX, y: event.clientY};
+      viewerStage.setPointerCapture(event.pointerId);
+    });
+    viewerStage.addEventListener("pointerup", (event) => {
+      if (!swipe) return;
+      const dx = event.clientX - swipe.x;
+      const dy = event.clientY - swipe.y;
+      swipe = null;
+      if (Math.abs(dx) < 48 || Math.abs(dx) < Math.abs(dy)) return;
+      showViewer(viewerIndex + (dx < 0 ? 1 : -1));
+    });
+    viewerStage.addEventListener("pointercancel", () => { swipe = null; });
+
+    document.addEventListener("keydown", (event) => {
+      if (!viewer.open) return;
+      if (event.key === "ArrowLeft") showViewer(viewerIndex - 1);
+      else if (event.key === "ArrowRight") showViewer(viewerIndex + 1);
+    });
+
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files && fileInput.files[0];
+      fileInput.value = "";
+      if (file) useFile(file, false);
+    });
+
+    function blockWithoutSession(event) {
+      if (sessionSelect.value) return;
+      event.preventDefault();
+      setStatus("Select a session first.");
+    }
+
+    cameraLabel.addEventListener("click", blockWithoutSession);
+    drop.addEventListener("click", blockWithoutSession);
+
+    cameraInput.addEventListener("change", () => {
+      const file = cameraInput.files && cameraInput.files[0];
+      cameraInput.value = "";
+      if (file) useFile(file, true);
+    });
+
+    drop.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      if (sessionSelect.value) drop.classList.add("over");
+    });
+    drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+    drop.addEventListener("drop", (event) => {
+      event.preventDefault();
+      drop.classList.remove("over");
+      if (!sessionSelect.value) {
+        setStatus("Select a session first.");
+        return;
+      }
+      const file = event.dataTransfer.files && event.dataTransfer.files[0];
+      if (file) useFile(file);
+    });
+
+    searchBtn.addEventListener("click", () => runSearch(hasResults));
+
+    async function loadSessions() {
+      const sessions = await api("/getSessions", {headers: {"Authorization": bearer}});
+      const ready = (sessions || []).filter(session => session.status === "Ready");
+      sessionSelect.replaceChildren();
+      if (!ready.length) {
+        sessionSelect.append(new Option("No ready sessions", ""));
+        setStatus("No ready sessions.");
+        return;
+      }
+      sessionSelect.append(new Option("Select a session", ""));
+      for (const session of ready) {
+        const name = (session.name || "").trim() || "<unnamed>";
+        sessionSelect.append(new Option(`${name} (${session.numPhotos})`, session.id));
+      }
+      const preset = new URLSearchParams(location.search).get("sessionId");
+      if (preset && ready.some(session => session.id === preset)) sessionSelect.value = preset;
+      sessionSelect.disabled = false;
+      syncButton();
+    }
+
+    (async () => {
+      try {
+        const client = await getAuth0Client();
+        if (!(await client.isAuthenticated())) {
+          location.href = "/";
+          return;
+        }
+        bearer = `Bearer ${await getAccessToken()}`;
+        await loadSessions();
+      } catch (err) {
+        console.error(err);
+        setStatus("Could not sign in.");
+      }
+    })();
+  </script>
+</body>
+</html>
