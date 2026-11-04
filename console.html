@@ -425,7 +425,7 @@
         renameItem.addEventListener("click", function() {
           optionsMenu.style.display = "none";
           const newName = prompt("New Session Name:", sessionData["name"]);
-          if (newName != null & newName != sessionData["name"]) {
+          if (newName != null && newName != sessionData["name"]) {
             console.log(`Renaming session ${sessionData["id"]} to '${newName}'`);
             hideSessions();
             fetch(`https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com/modifySession`, 
