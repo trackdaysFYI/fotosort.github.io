@@ -420,7 +420,10 @@
             fetch(`https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com/modifySession`, 
               {method: "PATCH", headers: {"Authorization": bearer}, body: JSON.stringify({"sessionId": sessionData["id"], "action": "rename", "newName": newName})})
               .then(response => {if (response.ok) {refreshSessions();} else {throw new Error(response.status);}})
-              .catch(error => {alert(`Rename Failed (Error ${error.message})`);});
+              .catch(error => {
+                alert(`Rename Failed (Error ${error.message})`);
+                showSessions();
+              });
           }
         });
 
@@ -433,7 +436,10 @@
             fetch(`https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com/modifySession`, 
               {method: "PATCH", headers: {"Authorization": bearer}, body: JSON.stringify({"sessionId": sessionData["id"], "action": "delete"})})
               .then(response => {if (response.ok) {refreshSessions();} else {throw new Error(response.status);}})
-              .catch(error => {alert(`Delete Failed (Error ${error.message})`);});
+              .catch(error => {
+                alert(`Delete Failed (Error ${error.message})`);
+                showSessions();
+              });
           }
         });
       });
