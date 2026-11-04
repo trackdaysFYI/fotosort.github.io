@@ -570,13 +570,13 @@
     }
 
     async function uploadFile(file, uploadURL, uploadFields, maxAttempts = 3) {
-      let postBody = new FormData()
-      for (const key in uploadFields) {
-        postBody.append(key, uploadFields[key]);
-      }
-      postBody.append("file", file);
       for (let attemptCnt = 1; attemptCnt <= maxAttempts; attemptCnt++) {
         try {
+          const postBody = new FormData();
+          for (const key in uploadFields) {
+            postBody.append(key, uploadFields[key]);
+          }
+          postBody.append("file", file);
           const response = await fetch(uploadURL, {method: "POST", body: postBody});
           if (response.ok) {
             console.log(`Uploaded '${file.name}' (${(file.size / 1024 / 1024).toFixed(2)} MB)`)
