@@ -298,9 +298,18 @@
       sessionInfoText.hidden = false;
     }
 
+    let sessionsAbort = null;
+
     function refreshSessions() {
+      if (sessionsAbort) sessionsAbort.abort();
+      const controller = new AbortController();
+      sessionsAbort = controller;
       hideSessions();
-      fetch("https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com/getSessions", {method: "GET", headers: {"Authorization": bearer}})
+      fetch("https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com/getSessions", {
+        method: "GET",
+        headers: {"Authorization": bearer},
+        signal: controller.signal
+      })
         .then(response => {
           if (response.ok) {
             return response.json();
@@ -310,9 +319,11 @@
           }
         })
         .then(sessionsData => {
+          if (sessionsAbort !== controller) return;
           updateSessionTable(sessionsData);
         })
         .catch(error => {
+          if (error.name === "AbortError" || sessionsAbort !== controller) return;
           const statusCode = parseInt(error.message);
           if (statusCode == 401) {
             sessionInfoText.innerText = "Refresh Failed (Unauthorized)";
@@ -322,7 +333,8 @@
             sessionInfoText.innerText = "Refresh Failed (Server Error)";
           }
         })
-        .finally(error => {
+        .finally(() => {
+          if (sessionsAbort !== controller) return;
           showSessions();
         });
     }
