@@ -1412,9 +1412,12 @@ const FS = (() => {
     const pathBad = targetLinux ? /[\r\n\t]/ : /[\r\n\t"]/;
     const groupBad = targetLinux ? /[\r\n\t]/ : /[\r\n\t"|]/;
     for (const [groupName, paths] of Object.entries(groupNameToPaths)) {
-      if (groupBad.test(groupName)) return `The group name "${groupName}"`;
+      if (!targetLinux && /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(groupName)) {
+        return `The group name "${groupName}" is reserved by Windows and cannot be a folder name.`;
+      }
+      if (groupBad.test(groupName)) return `The group name "${groupName}" contains a character this script cannot store safely.`;
       for (const path of paths) {
-        if (pathBad.test(path)) return `The filename "${path}"`;
+        if (pathBad.test(path)) return `The filename "${path}" contains a character this script cannot store safely.`;
       }
     }
     return "";
@@ -1422,7 +1425,7 @@ const FS = (() => {
 
   function buildExportScript(groupNameToPaths, targetLinux, sessionName) {
     const problem = exportPathProblem(groupNameToPaths, targetLinux);
-    if (problem) throw new Error(`${problem} contains a character this script cannot store safely.`);
+    if (problem) throw new Error(problem);
     const jobs = exportJobs(groupNameToPaths);
     const groups = Object.keys(groupNameToPaths);
     let script = "";
@@ -1462,6 +1465,7 @@ const FS = (() => {
       script += "mode=\n";
       script += "while [ -z \"$mode\" ]; do\n";
       script += "  read -rp \"Type M or C: \" answer || abort \"No choice made.\" clean\n";
+      script += "  answer=${answer%$'\\r'}\n";
       script += "  case \"$answer\" in\n";
       script += "    [Mm]) mode=M ;;\n";
       script += "    [Cc]) mode=C ;;\n";
@@ -1477,11 +1481,15 @@ const FS = (() => {
       script += "echo M - Move Photos into Folders\n";
       script += "echo C - Copy Photos into Folders\n";
       script += "echo.\n";
+      script += "set \"MODE=\"\n";
       script += "choice /c MC /n /m \"Type M or C: \"\n";
       script += "if errorlevel 3 echo ABORTED: No choice made.& echo No changes made.& pause& exit /b 1\n";
       script += "if errorlevel 2 set \"MODE=C\"\n";
-      script += "if errorlevel 1 if not \"%MODE%\"==\"C\" set \"MODE=M\"\n";
+      script += "if errorlevel 1 if not defined MODE set \"MODE=M\"\n";
       script += "if not \"%MODE%\"==\"C\" if not \"%MODE%\"==\"M\" echo ABORTED: No choice made.& echo No changes made.& pause& exit /b 1\n";
+      // choice reads one key. Enter typed after it would otherwise skip a later pause.
+      script += "powershell -NoProfile -Command \"try { while ([Console]::KeyAvailable) { [void][Console]::ReadKey($true) } } catch {}\" >nul 2>&1\n";
+      script += "ver >nul\n";
       script += "if \"%MODE%\"==\"M\" echo Moving images. Originals will be removed.\n";
       script += "if \"%MODE%\"==\"C\" echo Copying images. Originals will stay in this folder.\n";
     }
