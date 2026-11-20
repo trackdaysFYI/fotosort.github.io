@@ -1328,6 +1328,8 @@ const FS = (() => {
         const go = linux => {
           const again = this.buildExport();
           if (again.issues.length) { window.alert(again.issues.join("\n")); return; }
+          const script = generateAndDownloadScript(again.groupNameToPaths, linux, this.ds.sessionName);
+          if (!script) return;
           if (this.ds.fromSession && this.ds.sessionId && typeof getBearer === "function") {
             getBearer().then(authorization => fetch(`${API_BASE}/saveSession`, {
               method: "POST",
@@ -1335,7 +1337,6 @@ const FS = (() => {
               body: JSON.stringify({sessionId: this.ds.sessionId, groupNameToExtIds: again.groupNameToExtIds})
             })).catch(err => console.error(err));
           }
-          generateAndDownloadScript(again.groupNameToPaths, linux, this.ds.sessionName);
           this.closeOverlay();
           const folders = Object.keys(again.groupNameToPaths).length;
           this.toast(`Downloaded ${linux ? ".sh" : ".cmd"} script for ${plural(folders, "folder")}`);
@@ -1354,7 +1355,7 @@ const FS = (() => {
           el("div", {class: "fs-export-buttons"},
             el("button", {class: "btn primary", type: "button", text: "Windows (.cmd)", onclick: () => go(false)}),
             el("button", {class: "btn primary", type: "button", text: "Mac / Linux (.sh)", onclick: () => go(true)})),
-          el("p", {class: "fs-muted", text: "Download a script that copies each photo into a folder named after its group. Run it from the folder with your originals."}));
+          el("p", {class: "fs-muted", text: "Download a script that places each photo in a folder named after its group. When you run it, it asks whether to copy or move. Every file is checked before anything changes. Run it from the folder with your originals."}));
       };
       const node = el("div", {class: "fs-pop fs-export"});
       node.append(...render().childNodes);
@@ -1383,19 +1384,66 @@ const FS = (() => {
     return '"' + String(value).replace(/%/g, "%%").replace(/"/g, '""') + '"';
   }
 
-  function generateAndDownloadScript(groupNameToPaths, targetLinux, sessionName) {
-    const sessionNameStd = (sessionName || "").replace(/[^a-zA-Z0-9]/g, "");
-    const pauseLine = targetLinux ? `read -rsn1 -p "Press any key to continue . . ."; echo\n` : "pause\n";
-    const groups = Object.entries(groupNameToPaths);
-    const allPaths = [...new Set(groups.flatMap(([, paths]) => paths))];
+  // S is the file's only folder: the script copies or moves it.
+  // C lines copy a file that also belongs to other folders. D removes that
+  // original afterward, and only when the person running the script chose move.
+  function exportJobs(groupNameToPaths) {
+    const dests = new Map();
+    for (const [groupName, paths] of Object.entries(groupNameToPaths)) {
+      for (const path of paths) {
+        if (!path) continue;
+        let groups = dests.get(path);
+        if (!groups) dests.set(path, groups = []);
+        if (!groups.includes(groupName)) groups.push(groupName);
+      }
+    }
+    const jobs = [];
+    for (const [src, groups] of dests) {
+      if (groups.length === 1) jobs.push(["S", groups[0], src]);
+      else {
+        for (const dest of groups) jobs.push(["C", dest, src]);
+        jobs.push(["D", "-", src]);
+      }
+    }
+    return jobs;
+  }
 
+  function exportPathProblem(groupNameToPaths, targetLinux) {
+    const pathBad = targetLinux ? /[\r\n\t]/ : /[\r\n\t"]/;
+    const groupBad = targetLinux ? /[\r\n\t]/ : /[\r\n\t"|]/;
+    for (const [groupName, paths] of Object.entries(groupNameToPaths)) {
+      if (groupBad.test(groupName)) return `The group name "${groupName}"`;
+      for (const path of paths) {
+        if (pathBad.test(path)) return `The filename "${path}"`;
+      }
+    }
+    return "";
+  }
+
+  function buildExportScript(groupNameToPaths, targetLinux, sessionName) {
+    const problem = exportPathProblem(groupNameToPaths, targetLinux);
+    if (problem) throw new Error(`${problem} contains a character this script cannot store safely.`);
+    const jobs = exportJobs(groupNameToPaths);
+    const groups = Object.keys(groupNameToPaths);
     let script = "";
     if (targetLinux) {
       script += "#!/bin/bash\n";
-      script += "set -e\n";
+      script += "abort() {\n";
+      script += "  echo \"ABORTED: $1\"\n";
+      script += "  if [ \"$2\" = clean ]; then echo \"No changes made.\"; fi\n";
+      script += "  read -rsn1 -p \"Press any key to continue . . .\"; echo\n";
+      script += "  exit 1\n";
+      script += "}\n";
+      script += "ref_of() {\n";
+      script += "  case \"$1\" in\n";
+      script += "    -*) printf './%s' \"$1\" ;;\n";
+      script += "    *) printf '%s' \"$1\" ;;\n";
+      script += "  esac\n";
+      script += "}\n";
     } else {
       script += "@echo off\n";
-      script += "setlocal\n";
+      script += "chcp 65001 >nul\n";
+      script += "setlocal DisableDelayedExpansion\n";
     }
     script += "\n";
     script += "echo ------------------------------------------\n";
@@ -1406,70 +1454,148 @@ const FS = (() => {
         ? `echo Session Name: ${shQuote(sessionName)}\n`
         : `echo Session Name: ${cmdQuote(sessionName)}\n`;
     }
-    script += pauseLine;
     script += "\n";
-    script += "echo Checking directory\n";
     if (targetLinux) {
-      for (const path of allPaths) {
-        const q = shQuote(path);
-        script += `if [ ! -f ${q} ]; then\n`;
-        script += `  echo "ABORTED: Image ${q} was not found. Confirm that this script is in the image directory."\n`;
-        script += "  echo No changes made.\n";
-        script += "  " + pauseLine;
-        script += "  exit 1\n";
-        script += "fi\n";
-      }
+      script += "echo \"M - Move Photos into Folders\"\n";
+      script += "echo \"C - Copy Photos into Folders\"\n";
+      script += "echo\n";
+      script += "mode=\n";
+      script += "while [ -z \"$mode\" ]; do\n";
+      script += "  read -rp \"Type M or C: \" answer || abort \"No choice made.\" clean\n";
+      script += "  case \"$answer\" in\n";
+      script += "    [Mm]) mode=M ;;\n";
+      script += "    [Cc]) mode=C ;;\n";
+      script += "    *) echo \"Type M or C.\" ;;\n";
+      script += "  esac\n";
+      script += "done\n";
+      script += "if [ \"$mode\" = M ]; then\n";
+      script += "  echo \"Moving images. Originals will be removed.\"\n";
+      script += "else\n";
+      script += "  echo \"Copying images. Originals will stay in this folder.\"\n";
+      script += "fi\n";
     } else {
-      for (const path of allPaths) {
-        const q = cmdQuote(path);
-        script += `if not exist ${q} (\n`;
-        script += `  echo ABORTED: Image ${q} was not found. Confirm that this script is in the image directory.\n`;
-        script += "  echo No changes made.\n";
-        script += "  " + pauseLine;
-        script += "  exit /b 1\n";
-        script += ")\n";
-      }
+      script += "echo M - Move Photos into Folders\n";
+      script += "echo C - Copy Photos into Folders\n";
+      script += "echo.\n";
+      script += "choice /c MC /n /m \"Type M or C: \"\n";
+      script += "if errorlevel 3 echo ABORTED: No choice made.& echo No changes made.& pause& exit /b 1\n";
+      script += "if errorlevel 2 set \"MODE=C\"\n";
+      script += "if errorlevel 1 if not \"%MODE%\"==\"C\" set \"MODE=M\"\n";
+      script += "if not \"%MODE%\"==\"C\" if not \"%MODE%\"==\"M\" echo ABORTED: No choice made.& echo No changes made.& pause& exit /b 1\n";
+      script += "if \"%MODE%\"==\"M\" echo Moving images. Originals will be removed.\n";
+      script += "if \"%MODE%\"==\"C\" echo Copying images. Originals will stay in this folder.\n";
+    }
+    script += "\n";
+    if (targetLinux) {
+      script += "list=$(mktemp \"${TMPDIR:-/tmp}/fotosort.XXXXXX\") || abort \"Could not create a temporary file.\" clean\n";
+      script += "trap 'rm -f \"$list\"' EXIT\n";
+      script += "cat > \"$list\" <<'FOTOSORT_FILE_LIST_END'\n";
+      for (const [op, dest, src] of jobs) script += `${op}\t${dest}\t${src}\n`;
+      script += "FOTOSORT_FILE_LIST_END\n";
+      script += "\n";
+      script += "echo Checking directory\n";
+      script += "while IFS= read -r line || [ -n \"$line\" ]; do\n";
+      script += "  line=${line%$'\\r'}\n";
+      script += "  [ -n \"$line\" ] || continue\n";
+      script += "  op=${line%%$'\\t'*}\n";
+      script += "  rest=${line#*$'\\t'}\n";
+      script += "  case \"$op\" in\n";
+      script += "    S|C)\n";
+      script += "      src=${rest#*$'\\t'}\n";
+      script += "      [ -f \"$src\" ] || abort \"Image '$src' was not found. Confirm that this script is in the image directory.\" clean\n";
+      script += "      ;;\n";
+      script += "  esac\n";
+      script += "done < \"$list\"\n";
+    } else {
+      script += "echo Checking directory\n";
+      // Filenames stay in the list at the bottom. The loops read this script
+      // back, so a name with % or parentheses is data, not another command.
+      const missing = "if not exist \"%%C\" echo ABORTED: Image \"%%C\" was not found. Confirm that this script is in the image directory.& echo No changes made.& pause& exit /b 1";
+      script += `for /f "eol=# usebackq tokens=1,2* delims=|" %%A in ("%~f0") do if "%%A"=="S" ${missing}\n`;
+      script += `for /f "eol=# usebackq tokens=1,2* delims=|" %%A in ("%~f0") do if "%%A"=="C" ${missing}\n`;
     }
     script += "\n";
     script += "echo Creating group folders\n";
-    for (const [groupName] of groups) {
+    for (const groupName of groups) {
       if (targetLinux) {
-        script += `mkdir -p ${shQuote(groupName)}\n`;
+        script += `mkdir -p -- ${shQuote(groupName)} || abort ${shQuote("Failed to create folder '" + groupName + "'.")}\n`;
       } else {
         const q = cmdQuote(groupName);
         script += `if not exist ${q} mkdir ${q}\n`;
+        script += `if not exist ${q} echo ABORTED: Failed to create folder ${q}.& pause& exit /b 1\n`;
       }
     }
     script += "\n";
-    script += "echo Copying images to group folders\n";
-    for (const [groupName, paths] of groups) {
-      for (const path of paths) {
-        if (targetLinux) {
-          script += `if ! cp ${shQuote(path)} ${shQuote(groupName + "/")}; then\n`;
-          script += `  echo "ABORTED: Failed to copy ${shQuote(path)} to ${shQuote(groupName)}."\n`;
-          script += "  " + pauseLine;
-          script += "  exit 1\n";
-          script += "fi\n";
-        } else {
-          // No trailing backslash before the closing quote — that breaks CMD parsing.
-          script += `copy /Y ${cmdQuote(path)} ${cmdQuote(groupName)} >nul\n`;
-          script += "if errorlevel 1 (\n";
-          script += `  echo ABORTED: Failed to copy ${cmdQuote(path)} to ${cmdQuote(groupName)}.\n`;
-          script += "  " + pauseLine;
-          script += "  exit /b 1\n";
-          script += ")\n";
-        }
-      }
+    if (targetLinux) {
+      script += "if [ \"$mode\" = M ]; then echo \"Moving images to group folders\"; else echo \"Copying images to group folders\"; fi\n";
+      script += "while IFS= read -r line || [ -n \"$line\" ]; do\n";
+      script += "  line=${line%$'\\r'}\n";
+      script += "  [ -n \"$line\" ] || continue\n";
+      script += "  op=${line%%$'\\t'*}\n";
+      script += "  rest=${line#*$'\\t'}\n";
+      script += "  case \"$op\" in\n";
+      script += "    S)\n";
+      script += "      dest=${rest%%$'\\t'*}\n";
+      script += "      src=${rest#*$'\\t'}\n";
+      script += "      ref=$(ref_of \"$src\")\n";
+      script += "      if [ \"$mode\" = M ]; then\n";
+      script += "        mv -f \"$ref\" \"./$dest/\" || abort \"Failed to move '$src' to '$dest'.\"\n";
+      script += "      else\n";
+      script += "        cp -f \"$ref\" \"./$dest/\" || abort \"Failed to copy '$src' to '$dest'.\"\n";
+      script += "      fi\n";
+      script += "      ;;\n";
+      script += "    C)\n";
+      script += "      dest=${rest%%$'\\t'*}\n";
+      script += "      src=${rest#*$'\\t'}\n";
+      script += "      ref=$(ref_of \"$src\")\n";
+      script += "      cp -f \"$ref\" \"./$dest/\" || abort \"Failed to copy '$src' to '$dest'.\"\n";
+      script += "      ;;\n";
+      script += "    D)\n";
+      script += "      if [ \"$mode\" = M ]; then\n";
+      script += "        src=${rest#*$'\\t'}\n";
+      script += "        ref=$(ref_of \"$src\")\n";
+      script += "        rm -f \"$ref\" || abort \"Failed to remove '$src'.\"\n";
+      script += "      fi\n";
+      script += "      ;;\n";
+      script += "  esac\n";
+      script += "done < \"$list\"\n";
+    } else {
+      script += "if \"%MODE%\"==\"M\" echo Moving images to group folders\n";
+      script += "if \"%MODE%\"==\"C\" echo Copying images to group folders\n";
+      const copyFail = "copy /Y \"%%C\" \"%%B\" >nul 2>&1 & if errorlevel 1 echo ABORTED: Failed to copy \"%%C\" to \"%%B\".& pause& exit /b 1";
+      const moveFail = "move /Y \"%%C\" \"%%B\" >nul 2>&1 & if errorlevel 1 echo ABORTED: Failed to move \"%%C\" to \"%%B\".& pause& exit /b 1";
+      const delFail = "del /F /Q \"%%C\" >nul 2>&1 & if exist \"%%C\" echo ABORTED: Failed to remove \"%%C\".& pause& exit /b 1";
+      script += `if \"%MODE%\"==\"M\" for /f \"eol=# usebackq tokens=1,2* delims=|\" %%A in (\"%~f0\") do if \"%%A\"==\"S\" ${moveFail}\n`;
+      script += `if \"%MODE%\"==\"C\" for /f \"eol=# usebackq tokens=1,2* delims=|\" %%A in (\"%~f0\") do if \"%%A\"==\"S\" ${copyFail}\n`;
+      script += `for /f \"eol=# usebackq tokens=1,2* delims=|\" %%A in (\"%~f0\") do if \"%%A\"==\"C\" ${copyFail}\n`;
+      script += `if \"%MODE%\"==\"M\" for /f \"eol=# usebackq tokens=1,2* delims=|\" %%A in (\"%~f0\") do if \"%%A\"==\"D\" ${delFail}\n`;
     }
     script += "\n";
     script += "echo Finished\n";
     if (!targetLinux) script += "endlocal\n";
-    script += pauseLine;
+    script += targetLinux ? "read -rsn1 -p \"Press any key to continue . . .\"; echo\n" : "pause\n";
+    if (!targetLinux) {
+      script += "exit /b 0\n";
+      for (const [op, dest, src] of jobs) script += `${op}|${dest}|${src}\n`;
+      // CMD mis-parses this file when it is LF-only, especially after chcp 65001.
+      script = script.replace(/\n/g, "\r\n");
+    }
+    return script;
+  }
 
+  function generateAndDownloadScript(groupNameToPaths, targetLinux, sessionName) {
+    let script = "";
+    try {
+      script = buildExportScript(groupNameToPaths, targetLinux, sessionName);
+    } catch (err) {
+      window.alert(err && err.message ? err.message : "Could not build the export script.");
+      return "";
+    }
+    const sessionNameStd = (sessionName || "").replace(/[^a-zA-Z0-9]/g, "");
     const blob = new Blob([script], {type: "text/plain"});
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `copy-script${sessionNameStd ? "-" + sessionNameStd : ""}.${targetLinux ? "sh" : "cmd"}`;
+    link.download = `fotosort-script${sessionNameStd ? "-" + sessionNameStd : ""}.${targetLinux ? "sh" : "cmd"}`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(link.href), 2000);
     return script;

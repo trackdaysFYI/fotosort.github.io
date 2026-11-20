@@ -397,6 +397,7 @@ body.fs-dragging, body.fs-dragging * { cursor: grabbing !important; }
 .fs-pop p { font-size: 12.5px; line-height: 1.45; }
 .fs-summary { margin: 6px 0 10px; padding-left: 18px; line-height: 1.6; }
 .fs-check { display: flex; gap: 8px; align-items: center; font-size: 13px; margin-bottom: 10px; }
+.fs-export { width: 420px; }
 .fs-issues { color: var(--danger); font-size: 12.5px; margin-bottom: 10px; }
 .fs-export-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
 .fs-help { width: 440px; max-height: 80vh; overflow: auto; }
