@@ -305,29 +305,13 @@ const FS = (() => {
   }
 
   async function loadDataset(cfg = {}) {
-    const params = new URLSearchParams(location.search);
-    const sessionId = params.get("sessionId");
-    const sample = params.get("data") || "data.bin";
+    const sessionId = new URLSearchParams(location.search).get("sessionId");
+    if (!sessionId) throw new Error("missing sessionId");
 
-    let buffer = null;
-    let fromSession = false;
-    let notice = "";
-    let sessionName = "";
-    let bboxes = {};
-
-    if (sessionId) {
-      try {
-        const access = await fetchSession(sessionId, null, cfg.bbox);
-        sessionName = access.name || "";
-        if (access.bbox) bboxes = access.bbox;
-        buffer = await fetchBuffer(access.dataUrl);
-        fromSession = true;
-      } catch (err) {
-        console.error(err);
-        notice = `Could not open session "${sessionId.slice(0, 8)}". Showing the sample data.bin instead.`;
-      }
-    }
-    if (!buffer) buffer = await fetchBuffer(sample);
+    const access = await fetchSession(sessionId, null, cfg.bbox);
+    const sessionName = access.name || "";
+    const bboxes = access.bbox || {};
+    const buffer = await fetchBuffer(access.dataUrl);
 
     const parsed = parseDataBIN(buffer);
     const photos = parsed.imageInfoArr.map((info, id) => {
@@ -355,9 +339,7 @@ const FS = (() => {
       bboxes,
       bboxesByPhoto: {},
       origUrls: {},
-      fromSession,
-      sourceLabel: fromSession ? (sessionName || "Session") : sample,
-      notice
+      fromSession: true,
     };
   }
 
@@ -479,7 +461,7 @@ const FS = (() => {
       this.overlay = null;
       this.lastClick = null;
       this._saveTimer = null;
-      this.progressKey = `fotosort-progress:${ds.sessionId || "sample"}:${fingerprint(ds)}`;
+      this.progressKey = `fotosort-progress:${ds.sessionId}:${fingerprint(ds)}`;
       document.documentElement.style.setProperty("--tile", this.zoom + "px");
       document.documentElement.style.setProperty("--photo-ar", String(ds.aspect > 0 ? ds.aspect : 1));
     }
@@ -1055,9 +1037,6 @@ const FS = (() => {
         exportBtn
       ));
       this.extraSlot = extra;
-      if (this.ds.notice) {
-        header.after(el("div", {class: "fs-notice", text: this.ds.notice}));
-      }
     }
 
     updateChrome() {
@@ -1637,8 +1616,14 @@ const FS = (() => {
       ds = await loadDataset(cfg);
     } catch (err) {
       console.error(err);
-      const versionError = err && typeof err.message === "string" && err.message.startsWith("unsupported data.bin format version");
-      if (loaderText) loaderText.textContent = versionError ? err.message : "Could not load photos";
+      const msg = err && typeof err.message === "string" ? err.message : "";
+      if (loaderText) {
+        if (msg.startsWith("unsupported data.bin format version") || msg === "missing sessionId") {
+          loaderText.textContent = msg === "missing sessionId" ? "Missing session" : msg;
+        } else {
+          loaderText.textContent = "Could not load photos";
+        }
+      }
       return null;
     }
     const app = new App(ds, cfg);

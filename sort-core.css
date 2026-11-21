@@ -123,15 +123,6 @@ kbd {
 .fs-field { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); white-space: nowrap; }
 .fs-field input[type="range"] { width: 96px; accent-color: var(--accent); }
 
-.fs-notice {
-  flex: none;
-  padding: 6px 14px;
-  font-size: 13px;
-  background: #fff4d6;
-  color: #6b4a00;
-  border-bottom: 1px solid #f1d58a;
-}
-
 .fs-muted { color: var(--muted); }
 
 /* ---------- photo tiles ---------- */
