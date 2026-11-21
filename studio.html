@@ -2010,8 +2010,14 @@
 
         /* ----- resizable menu ----- */
 
+        const MENU_MIN = 250;
+        function menuMaxWidth() {
+          return Math.max(MENU_MIN, window.innerWidth - MENU_MIN - splitter.offsetWidth);
+        }
         function applyWidth() {
-          qapp.style.setProperty("--mw", prefs.menuWidth + "px");
+          const preferred = Number(prefs.menuWidth);
+          const width = Math.round(Math.min(menuMaxWidth(), Math.max(MENU_MIN, Number.isFinite(preferred) ? preferred : PREF_DEFAULTS.menuWidth)));
+          qapp.style.setProperty("--mw", width + "px");
         }
         applyWidth();
         splitter.addEventListener("pointerdown", event => {
@@ -2019,9 +2025,7 @@
           splitter.classList.add("active");
           const left = qapp.getBoundingClientRect().left;
           const move = ev => {
-            const min = 250;
-            const max = Math.max(min, window.innerWidth - min - splitter.offsetWidth);
-            prefs.menuWidth = Math.round(Math.min(max, Math.max(min, ev.clientX - left)));
+            prefs.menuWidth = Math.round(Math.min(menuMaxWidth(), Math.max(MENU_MIN, ev.clientX - left)));
             applyWidth();
             applyGroupMetrics();
             menuResizeOnly = true;
@@ -2038,6 +2042,12 @@
           window.addEventListener("pointerup", up);
         });
         splitter.addEventListener("dblclick", () => { prefs.menuWidth = PREF_DEFAULTS.menuWidth; applyWidth(); savePrefs(); scheduleMenu(); });
+        window.addEventListener("resize", () => {
+          applyWidth();
+          applyGroupMetrics();
+          menuResizeOnly = true;
+          scheduleMenu();
+        });
 
         /* ----- header ----- */
 
