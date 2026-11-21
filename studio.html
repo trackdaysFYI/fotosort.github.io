@@ -1692,7 +1692,7 @@
         function applyGroupFilter(rows) {
           const q = groupFilter.trim().toLowerCase();
           if (!q) return rows;
-          return rows.filter(row => row.group.name.toLowerCase().includes(q));
+          return rows.filter(row => row.id === focusGroup || row.group.name.toLowerCase().includes(q));
         }
 
         // Size is the target thumb height. The row uses the whole card: column
