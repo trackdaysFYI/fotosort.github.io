@@ -1375,8 +1375,12 @@
           else refreshSelection();
         }
 
+        function typingTarget(event) {
+          const node = event.target;
+          return !!(node && node.closest && node.closest("input, textarea, [contenteditable]"));
+        }
         window.addEventListener("keydown", event => {
-          if (event.key === "Shift") setShiftHeld(true);
+          if (event.key === "Shift" && !typingTarget(event)) setShiftHeld(true);
           if (event.key === "Escape" && press) {
             event.preventDefault();
             event.stopImmediatePropagation();
