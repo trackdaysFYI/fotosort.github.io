@@ -64,11 +64,20 @@
       padding: 0 25px;
       display: flex;
       align-items: center;
-      justify-content: space-between;
+    }
+
+    .header-side {
+      flex: 1;
+      display: flex;
+      align-items: center;
+    }
+
+    .header-side:last-child {
+      justify-content: flex-end;
     }
 
     div.logo {
-      flex: 1;
+      flex: 0 0 auto;
       text-align: center;
     }
 
@@ -218,6 +227,7 @@
 <body>
   <header>
     <div class="container">
+      <div class="header-side" aria-hidden="true"></div>
       <div class="logo">
         <a href="/">
           <svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 24 24" fill="#FE621D">
@@ -227,7 +237,9 @@
           <strong>FotoSort</strong>
         </a>
       </div>
-      <button id="login" class="orange">Portal</button>
+      <div class="header-side">
+        <button id="login" class="orange">Portal</button>
+      </div>
     </div>
   </header>
 
