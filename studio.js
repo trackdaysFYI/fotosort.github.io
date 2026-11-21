@@ -6,7 +6,7 @@ const FIT_MODES = [
   ["stretch", "Stretch"],
   ["lock", "Lock aspect"]
 ];
-const ZOOM_DEFAULT = 150;
+const ZOOM_DEFAULT = 148;
 const GROUP_SIZE_RANGE = [50, 250];
 const GROUP_SIZE_DEFAULT = 100;
 const GROUP_ROWS_CHOICES = [
