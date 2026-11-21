@@ -15,6 +15,14 @@ function getAuth0Client() {
   return auth0ClientPromise;
 }
 
+// Same-origin path only (e.g. /studio.html?sessionId=...). Blocks open redirects.
+function safeReturnTo(path) {
+  if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//") || path.includes("://")) {
+    return null;
+  }
+  return path;
+}
+
 async function getAccessToken() {
   const client = await getAuth0Client();
   return client.getTokenSilently();
@@ -22,4 +30,13 @@ async function getAccessToken() {
 
 async function getBearer() {
   return `Bearer ${await getAccessToken()}`;
+}
+
+async function requireAuth() {
+  const client = await getAuth0Client();
+  if (await client.isAuthenticated()) return true;
+  await client.loginWithRedirect({
+    appState: {returnTo: safeReturnTo(location.pathname + location.search + location.hash) || "/console.html"}
+  });
+  return false;
 }

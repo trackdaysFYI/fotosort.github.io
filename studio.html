@@ -490,7 +490,9 @@
       return Array.from({length: k}, (_, i) => ids[Math.round(i * (ids.length - 1) / (k - 1))]);
     }
 
-    FS.start({
+    (async () => {
+      if (!(await requireAuth())) return;
+      FS.start({
       bbox: true,
       logo: true,
       zoom: ZOOM_DEFAULT,
@@ -2143,6 +2145,7 @@
         };
       }
     });
+    })();
   </script>
 </body>
 </html>

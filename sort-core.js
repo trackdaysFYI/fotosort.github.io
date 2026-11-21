@@ -1610,13 +1610,16 @@ const FS = (() => {
   }
 
   async function start(cfg) {
+    const loader = document.querySelector("[data-fs-loader]");
     const loaderText = document.querySelector("[data-fs-loader-text]");
+    const loaderSpinner = loader && loader.querySelector(".fs-spinner");
     let ds;
     try {
       ds = await loadDataset(cfg);
     } catch (err) {
       console.error(err);
       const msg = err && typeof err.message === "string" ? err.message : "";
+      if (loaderSpinner) loaderSpinner.remove();
       if (loaderText) {
         if (msg.startsWith("unsupported data.bin format version") || msg === "missing sessionId") {
           loaderText.textContent = msg === "missing sessionId" ? "Missing session" : msg;
@@ -1628,7 +1631,6 @@ const FS = (() => {
     }
     const app = new App(ds, cfg);
     const restored = app.restoreProgress();
-    const loader = document.querySelector("[data-fs-loader]");
     if (loader) loader.remove();
     document.getElementById("app").hidden = false;
     app.mountChrome();
