@@ -1609,6 +1609,22 @@ const FS = (() => {
     }
   }
 
+  function sessionLoadErrorMessage(err) {
+    const msg = err && typeof err.message === "string" ? err.message : "";
+    if (msg === "missing sessionId") return "Missing session";
+    if (msg.startsWith("unsupported data.bin format version")) return msg;
+    const match = /^getSession HTTP (\d+)$/.exec(msg);
+    if (match) {
+      return {
+        401: "Unauthorized",
+        403: "Not allowed",
+        404: "Session not found",
+        409: "Session is not ready"
+      }[match[1]] || `Unable to load photos (${match[1]})`;
+    }
+    return "Unable to load photos";
+  }
+
   async function start(cfg) {
     const loader = document.querySelector("[data-fs-loader]");
     const loaderText = document.querySelector("[data-fs-loader-text]");
@@ -1618,15 +1634,13 @@ const FS = (() => {
       ds = await loadDataset(cfg);
     } catch (err) {
       console.error(err);
-      const msg = err && typeof err.message === "string" ? err.message : "";
       if (loaderSpinner) loaderSpinner.remove();
       if (loaderText) {
-        if (msg.startsWith("unsupported data.bin format version") || msg === "missing sessionId") {
-          loaderText.textContent = msg === "missing sessionId" ? "Missing session" : msg;
-        } else {
-          loaderText.textContent = "Could not load photos";
-        }
+        loaderText.textContent = `${sessionLoadErrorMessage(err)}. Opening console…`;
       }
+      setTimeout(() => {
+        location.replace("/console.html");
+      }, 5000);
       return null;
     }
     const app = new App(ds, cfg);
