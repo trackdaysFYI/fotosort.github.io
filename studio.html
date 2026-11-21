@@ -652,6 +652,19 @@
           selFocus = -1;
         }
 
+        function restoreKeptSelection(ids) {
+          const want = new Set(ids);
+          if (selected.length !== queue.length) selected = new Uint8Array(queue.length);
+          selCount = 0;
+          selFocus = -1;
+          for (let i = 0; i < queue.length; i += 1) {
+            if (!want.has(queue[i])) continue;
+            selected[i] = 1;
+            selCount += 1;
+            selFocus = i;
+          }
+        }
+
         function refreshSelection() {
           paintSelection();
           renderBar(app.state);
@@ -2166,9 +2179,11 @@
         app.render = (state, kind) => {
           if (kind === "selection") return;
           if (press) cancelPress();
+          const keepIds = kind === "settings" ? selectedIds() : null;
           wipeSelection();
           if (state && focusGroup != null && !(state.members.get(focusGroup) || []).length) releaseGroupFocus();
           computeQueue(state);
+          if (keepIds) restoreKeptSelection(keepIds);
           renderQueue(state);
           renderMenu(state);
         };
