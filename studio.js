@@ -48,7 +48,16 @@ const {makeOrdering, sample} = StudioOrder;
 let page = null;
 
 (async () => {
-  if (!(await requireAuth())) return;
+  try {
+    if (!(await requireAuth())) return;
+  } catch (error) {
+    console.error(error);
+    const spinner = document.querySelector("[data-fs-loader] .fs-spinner");
+    const text = document.querySelector("[data-fs-loader-text]");
+    if (spinner) spinner.remove();
+    if (text) text.textContent = "Portal is unavailable. Please try again.";
+    return;
+  }
   FS.start({
   bbox: true,
   logo: true,
