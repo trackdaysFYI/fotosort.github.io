@@ -1552,7 +1552,12 @@
               menuOrder = [];
               scheduleMenu();
             });
-            find.addEventListener("keydown", event => event.stopPropagation());
+            find.addEventListener("keydown", event => {
+              event.stopPropagation();
+              if (event.key !== "Escape") return;
+              event.preventDefault();
+              groupsMenu.close();
+            });
             find.addEventListener("click", event => event.stopPropagation());
             return [
               find,
