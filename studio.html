@@ -567,6 +567,9 @@
           holdOrder = false;
           pinGroupId = null;
           menuOrder = [];
+          groupFilter = "";
+          const find = groupsMenu.panel.querySelector(".gmenu-find");
+          if (find) find.value = "";
           startOverCore();
         };
         const GROUP_SORTS = [
