@@ -1498,13 +1498,15 @@
           applyFocusToQueue();
         }
 
+        function releaseGroupFocus() {
+          focusGroup = null;
+          menuOrder = preFocusOrder && preFocusOrder.length ? preFocusOrder.slice() : menuOrder.slice();
+          preFocusOrder = null;
+          holdOrder = true;
+        }
+
         function clearGroupFocus(pinId = focusGroup) {
-          runPinnedMenu(pinId, () => {
-            focusGroup = null;
-            menuOrder = preFocusOrder && preFocusOrder.length ? preFocusOrder.slice() : menuOrder.slice();
-            preFocusOrder = null;
-            holdOrder = true;
-          });
+          runPinnedMenu(pinId, releaseGroupFocus);
           applyFocusToQueue();
         }
 
@@ -1892,15 +1894,15 @@
           const size = applyGroupMetrics();
           const doneSorting = !state.pool.length;
           if (focusGroup != null && !(state.members.get(focusGroup) || []).length) {
-            focusGroup = null;
-            preFocusOrder = null;
+            releaseGroupFocus();
+            applyFocusToQueue();
           }
-          let ranked;
+          let ranked = null;
           if (focusGroup != null) {
             const ref = groupSample(state.members.get(focusGroup) || []);
-            ranked = app.rankWith(ref, state.members);
-            const focused = ranked.find(r => r.id === focusGroup);
-            const others = ranked.filter(r => r.id !== focusGroup);
+            const similarity = app.rankWith(ref, state.members);
+            const focused = similarity.find(r => r.id === focusGroup);
+            const others = similarity.filter(r => r.id !== focusGroup);
             if (focused) {
               focused.dist = Infinity;
               // Keep the focused group where it was; nearest matches sit beside it.
@@ -1909,13 +1911,12 @@
               const below = others.slice(idx);
               ranked = [...above, focused, ...below];
             } else {
-              ranked = others;
-              focusGroup = null;
+              releaseGroupFocus();
+              applyFocusToQueue();
             }
-          } else if (doneSorting) {
-            ranked = orderGroupsBySimilarity(state);
-          } else {
-            ranked = app.rankWith(reference(), state.members);
+          }
+          if (ranked == null) {
+            ranked = doneSorting ? orderGroupsBySimilarity(state) : app.rankWith(reference(), state.members);
           }
           ranked = applyGroupSort(ranked);
           const totalGroups = ranked.length;
@@ -1936,6 +1937,7 @@
           }
           rows = applyGroupFilter(rows);
           menuOrder = rows.map(r => r.id);
+          holdOrder = false;
           const live = new Set(menuOrder);
           for (const id of [...cards.keys()]) if (!live.has(id)) cards.delete(id);
           const nodes = rows.map(row => card(row, size));
@@ -2142,6 +2144,7 @@
           if (kind === "selection") return;
           if (press) cancelPress();
           wipeSelection();
+          if (state && focusGroup != null && !(state.members.get(focusGroup) || []).length) releaseGroupFocus();
           computeQueue(state);
           renderQueue(state);
           renderMenu(state);
