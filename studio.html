@@ -341,7 +341,6 @@
     delete prefs.photoZoom;
     if (!FIT_MODES.some(([id]) => id === prefs.fit)) prefs.fit = PREF_DEFAULTS.fit;
     if (typeof prefs.breaks !== "boolean") prefs.breaks = PREF_DEFAULTS.breaks;
-    if (Number(prefs.groupSize) === 150 || Number(prefs.groupSize) === 75) prefs.groupSize = GROUP_SIZE_DEFAULT;
     prefs.groupSize = Math.round(Math.min(GROUP_SIZE_RANGE[1], Math.max(GROUP_SIZE_RANGE[0], Number(prefs.groupSize) || GROUP_SIZE_DEFAULT)));
     if (!GROUP_ROWS_CHOICES.some(([id]) => id === prefs.groupRows)) prefs.groupRows = PREF_DEFAULTS.groupRows;
     const applyFit = () => {
