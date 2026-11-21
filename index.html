@@ -143,7 +143,7 @@
       background-color: #EEE;
     }
 
-    .section h1 {
+    .section.question h2 {
       font-size: 1.6rem;
       margin: 0;
     }
@@ -246,8 +246,8 @@
 
   <main class="container">
     <section class="qna">
-      <div class="question section open">
-        <h1>What is FotoSort?</h1>
+      <div class="question section open" role="button" tabindex="0" aria-expanded="true">
+        <h2>What is FotoSort?</h2>
       </div>
       <div class="collapsible open">
         <div class="answer section">
@@ -258,12 +258,12 @@
     </section>
 
     <section class="qna">
-      <div class="question section open">
-        <h1>How does FotoSort work?</h1>
+      <div class="question section open" role="button" tabindex="0" aria-expanded="true">
+        <h2>How does FotoSort work?</h2>
       </div>
       <div class="collapsible open">
         <div class="answer section with-image">
-          <img src="images/step1.webp">
+          <img src="images/step1.webp" alt="Collage of trackday photos">
           <div>
             <h2>1. Select</h2>
             <p>Select up to 5,000 unsorted photos for grouping. FotoSort works with cars and all motorcycle types.</p>
@@ -271,7 +271,7 @@
         </div>
 
         <div class="answer section with-image">
-          <img src="images/step2.webp">
+          <img src="images/step2.webp" alt="Riders marked for grouping">
           <div>
             <h2>2. Process</h2>
             <p>Our proprietary, custom-trained algorithms detect each of the relevant, in-focus
@@ -281,7 +281,7 @@
         </div>
 
         <div class="answer section with-image">
-          <div class="overlap"><img src="images/step3-menu.webp"><img src="images/step3-groups.webp"></div>
+          <div class="overlap"><img src="images/step3-menu.webp" alt="FotoSort review controls"><img src="images/step3-groups.webp" alt="Photos grouped by rider"></div>
           <div>
             <h2>3. Review</h2>
             <p>Use our advanced UI to quickly refine automatic groupings with drag-and-drop functionality, and
@@ -290,7 +290,7 @@
         </div>
 
         <div class="answer section with-image">
-          <img src="images/step4.webp">
+          <img src="images/step4.webp" alt="Folders of sorted photos">
           <div>
             <h2>4. Apply</h2>
             <p>Generate a script that copies your original photos to their designated folders with the click of a button.</p>
@@ -307,8 +307,8 @@
     </section>
 
     <section class="qna">
-      <div class="question section open">
-        <h1>How much does FotoSort cost?</h1>
+      <div class="question section open" role="button" tabindex="0" aria-expanded="true">
+        <h2>How much does FotoSort cost?</h2>
       </div>
       <div class="collapsible open">
         <div class="answer section">
@@ -318,10 +318,10 @@
     </section>
 
     <section class="qna">
-      <div class="question section">
-        <h1>What are the system requirements?</h1>
+      <div class="question section" role="button" tabindex="0" aria-expanded="false">
+        <h2>What are the system requirements?</h2>
       </div>
-      <div class="collapsible">
+      <div class="collapsible" hidden>
         <div class="answer section">
           <p>FotoSort works on nearly every Windows, macOS, and Linux device, and <i>does not</i> require the installation of any software.</p>
           <p>We recommend using a modern browser (ex: Chrome, Safari, Firefox, etc) and a 2+ Mb/s internet connection for every 1,000 photos processed at a time.</p>
@@ -330,10 +330,10 @@
     </section>
 
     <section class="qna">
-      <div class="question section">
-        <h1>Is FotoSort secure?</h1>
+      <div class="question section" role="button" tabindex="0" aria-expanded="false">
+        <h2>Is FotoSort secure?</h2>
       </div>
-      <div class="collapsible">
+      <div class="collapsible" hidden>
         <div class="answer section">
           <p>Yes. All photos are encrypted and authentication is required to access them.</p>
           <p><u>We will never share or distribute your photos.</u></p>
@@ -344,10 +344,10 @@
     </section>
 
     <section class="qna">
-      <div class="question section">
-        <h1>How many photos can I sort at a time?</h1>
+      <div class="question section" role="button" tabindex="0" aria-expanded="false">
+        <h2>How many photos can I sort at a time?</h2>
       </div>
-      <div class="collapsible">
+      <div class="collapsible" hidden>
         <div class="answer section">
           <p>FotoSort can sort up to 5,000 photos at a time.</p>
           <p>FotoSort performs best when there are photos of each vehicle across several perspectives.</p>
@@ -356,10 +356,10 @@
     </section>
 
     <section class="qna">
-      <div class="question section">
-        <h1>How long does processing take?</h1>
+      <div class="question section" role="button" tabindex="0" aria-expanded="false">
+        <h2>How long does processing take?</h2>
       </div>
-      <div class="collapsible">
+      <div class="collapsible" hidden>
         <div class="answer section">
           <p>Processing typically takes around 15 minutes for every 1,000 photos in a session.</p>
         </div>
@@ -367,10 +367,10 @@
     </section>
 
     <section class="qna">
-      <div class="question section">
-        <h1>Do I need to keep FotoSort open during processing?</h1>
+      <div class="question section" role="button" tabindex="0" aria-expanded="false">
+        <h2>Do I need to keep FotoSort open during processing?</h2>
       </div>
-      <div class="collapsible">
+      <div class="collapsible" hidden>
         <div class="answer section">
           <p>No. After creating a session, processing is done on our secure servers. You may close FotoSort and return at a later time.</p>
         </div>
@@ -378,10 +378,10 @@
     </section>
 
     <section class="qna">
-      <div class="question section">
-        <h1>Can I create new sessions while older sessions are still processing?</h1>
+      <div class="question section" role="button" tabindex="0" aria-expanded="false">
+        <h2>Can I create new sessions while older sessions are still processing?</h2>
       </div>
-      <div class="collapsible">
+      <div class="collapsible" hidden>
         <div class="answer section">
           <p>Yes. New sessions can be created at any time, even when older sessions are still processing.</p>
           <p>Multiple sessions can also be created at the same time (in parallel) across multiple browser windows or devices.</p>
@@ -402,14 +402,26 @@
     const question = section.querySelector(".question");
     const answer = section.querySelector(".collapsible");
 
-    // add indicator to each question
-    const indicator = document.createElement("h1");
+    const isOpen = question.classList.contains("open");
+    question.setAttribute("aria-expanded", String(isOpen));
+    answer.hidden = !isOpen;
+
+    const indicator = document.createElement("span");
     indicator.classList.add("indicator");
+    indicator.setAttribute("aria-hidden", "true");
     question.appendChild(indicator);
 
     question.addEventListener("click", () => {
-      question.classList.toggle("open");  // req'd for indicator
-      answer.classList.toggle("open");
+      const open = question.classList.toggle("open");
+      answer.classList.toggle("open", open);
+      question.setAttribute("aria-expanded", String(open));
+      answer.hidden = !open;
+    });
+
+    question.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      question.click();
     });
   });
 
