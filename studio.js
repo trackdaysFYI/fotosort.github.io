@@ -974,6 +974,10 @@ let page = null;
         if (key === "Escape" && rowsMenu.isOpen()) { rowsMenu.close(); return true; }
         if (key === "Escape" && fitMenu.isOpen()) { fitMenu.close(); return true; }
         if (key === "Escape" && hasSelection()) { clearSelection(); return true; }
+        if ((key === "Delete" || key === "Backspace") && hasSelection()) {
+          app.drop("trash", selectedIds());
+          return true;
+        }
         return false;
       }
     };
