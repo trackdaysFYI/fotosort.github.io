@@ -8,6 +8,7 @@
   <title>FotoSort - Car and Motorcycle Photo Sorter</title>
   <link rel="icon" href="favicon.ico" type="image/x-icon">
   <script src="https://cdn.auth0.com/js/auth0-spa-js/2.0/auth0-spa-js.production.js"></script>
+  <script src="auth.js"></script>
 
   <style>
     @font-face {
@@ -412,19 +413,21 @@
     });
   });
 
-  (async () => {
-    const auth0Client = await auth0.createAuth0Client({
-      domain: "login.fotosort.com",
-      clientId: "t8MAyGQPxUK0k673gQc7O8zhf6XtrZoD",
-      cacheLocation: "localstorage",
-      authorizationParams: {
-        redirect_uri: window.location.origin + "/console.html",
+  const loginButton = document.getElementById("login");
+  loginButton.addEventListener("click", async () => {
+    loginButton.disabled = true;
+    try {
+      const client = await getAuth0Client();
+      if (await client.isAuthenticated()) {
+        window.location.assign("/console.html");
+        return;
       }
-    });
-
-    document.getElementById("login").addEventListener("click", async () => {
-      await auth0Client.loginWithRedirect();
-    });
-  })();
+      await client.loginWithRedirect();
+    } catch (error) {
+      console.error(error);
+      loginButton.disabled = false;
+      window.alert("Portal is unavailable. Please try again.");
+    }
+  });
 </script>
 </html>
