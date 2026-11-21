@@ -1924,7 +1924,11 @@
           const followQueue = focusGroup == null && !doneSorting && groupSort === "similarity" && !refIds.length;
           let rows;
           const holdForDrag = Boolean(app.drag);
-          if (!followQueue && (holdOrder || menuHover || holdForDrag) && menuOrder.length && groupSort === "similarity" && !groupFilter.trim()) {
+          // holdOrder is the order from before Focus. It wins for this render, including when
+          // nothing is selected. Hover and drag still freeze only while a selection is ranking groups.
+          const keepOrder = (holdOrder || ((menuHover || holdForDrag) && !followQueue))
+            && menuOrder.length && groupSort === "similarity" && !groupFilter.trim();
+          if (keepOrder) {
             const pos = new Map(menuOrder.map((id, i) => [id, i]));
             rows = ranked.slice().sort((a, b) => (pos.has(a.id) ? pos.get(a.id) : -1) - (pos.has(b.id) ? pos.get(b.id) : -1));
           } else {
