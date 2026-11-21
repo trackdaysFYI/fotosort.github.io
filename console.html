@@ -359,15 +359,6 @@
       padding: 8px;
       font-size: 14px;
     }
-    #sorter-dialog label.remember {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 13px;
-      color: #333;
-      cursor: pointer;
-      user-select: none;
-    }
   </style>
 
   <script>
@@ -557,6 +548,15 @@
       });
     }
 
+    const NOTIFY_EMAIL_PREF_KEY = "fotosort-notify-email";
+    function getNotifyEmailPref() {
+      const value = localStorage.getItem(NOTIFY_EMAIL_PREF_KEY);
+      return value === null ? true : value === "true";
+    }
+    function setNotifyEmailPref(checked) {
+      localStorage.setItem(NOTIFY_EMAIL_PREF_KEY, checked ? "true" : "false");
+    }
+
     function showUploadOptions() {
       dragAndDropEnabled = false;
       uploadAreaElement.classList.add("solid-border");
@@ -569,7 +569,7 @@
       const minPhotos = 30;
       const canUpload = (selectedFiles.length >= minPhotos) && (selectedFiles.length <= maxPhotos);
       uploadButtonElement.disabled = !canUpload;
-      notifyEmailInputElement.checked = true;
+      notifyEmailInputElement.checked = getNotifyEmailPref();
       notifyEmailInputElement.disabled = !canUpload;
       notifyEmailLabel.style.display = canUpload ? "" : "none";
       if (!canUpload) {
@@ -814,10 +814,6 @@
         <button type="submit" value="studio" class="styled orange">Studio (new)</button>
         <button type="submit" value="sort" class="styled blue">Classic</button>
       </div>
-      <label class="remember">
-        <input type="checkbox" id="sorter-remember">
-        Remember my choice
-      </label>
     </form>
   </dialog>
 
@@ -851,17 +847,15 @@
   const sessionTable = document.getElementById("session-table");
   const sessionInfoText = document.getElementById("session-info");
 
-  const SORTER_PREF_KEY = "fotosort-sorter";
+  notifyEmailInputElement.checked = getNotifyEmailPref();
+  notifyEmailInputElement.addEventListener("change", () => {
+    setNotifyEmailPref(notifyEmailInputElement.checked);
+  });
+
   const SORTERS = {studio: "studio.html", sort: "sort.html"};
   const sorterDialog = document.getElementById("sorter-dialog");
   const sorterForm = document.getElementById("sorter-form");
-  const sorterRemember = document.getElementById("sorter-remember");
   let pendingSessionId = null;
-
-  function getSorterPref() {
-    const value = localStorage.getItem(SORTER_PREF_KEY);
-    return value in SORTERS ? value : null;
-  }
 
   function openSorter(sessionId, sorter) {
     const page = SORTERS[sorter];
@@ -870,13 +864,7 @@
   }
 
   function openSession(sessionId) {
-    const pref = getSorterPref();
-    if (pref) {
-      openSorter(sessionId, pref);
-      return;
-    }
     pendingSessionId = sessionId;
-    sorterRemember.checked = false;
     sorterDialog.showModal();
   }
 
@@ -885,7 +873,6 @@
     const sessionId = pendingSessionId;
     pendingSessionId = null;
     if (!sessionId || !SORTERS[sorter]) return;
-    if (sorterRemember.checked) localStorage.setItem(SORTER_PREF_KEY, sorter);
     openSorter(sessionId, sorter);
   });
 
