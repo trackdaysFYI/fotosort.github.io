@@ -1906,7 +1906,8 @@
             const ref = groupSample(state.members.get(focusGroup) || []);
             const similarity = app.rankWith(ref, state.members);
             const focused = similarity.find(r => r.id === focusGroup);
-            const others = similarity.filter(r => r.id !== focusGroup);
+            // focusIndex is the card's place in the filtered list, so hidden groups must not take slots.
+            const others = applyGroupFilter(similarity.filter(r => r.id !== focusGroup));
             if (focused) {
               focused.dist = Infinity;
               // Keep the focused group where it was; nearest matches sit beside it.
