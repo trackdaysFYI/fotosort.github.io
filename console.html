@@ -99,7 +99,7 @@
     }
 
     #upload-area {
-      height: 120px;
+      min-height: 120px;
       background-color: #f9f9f9;
       border: 2px dashed gainsboro;
       border-radius: 8px;
@@ -129,7 +129,11 @@
       display: none;
       width: 100%;
       max-width: 500px;
-      border-spacing: 10px;
+      border-spacing: 8px;
+      table-layout: fixed;
+    }
+    #upload-ui td:last-child {
+      width: 7.5em;
     }
 
     #session-name-input {
@@ -148,12 +152,39 @@
     }
 
     #upload-status-text {
+      display: block;
       color: dimgray;
-      font-size: 17px;
+      font-size: 15px;
+      line-height: 1.15;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     #upload-ui button {
       width: 100%;
+    }
+
+    #upload-ui label.notify-email {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      max-width: 100%;
+      margin-top: 6px;
+      font-size: 15px;
+      line-height: 1.15;
+      color: dimgray;
+      cursor: pointer;
+      user-select: none;
+    }
+    #upload-ui label.notify-email input {
+      margin: 0;
+      flex: 0 0 auto;
+      accent-color: dodgerblue;
+    }
+    #upload-ui label.notify-email span {
+      min-width: 0;
     }
 
     h1:has(#refresh-button) {
@@ -536,11 +567,13 @@
       uploadStatusTextElement.textContent = `${selectedFiles.length} Photos Selected`;
 
       const minPhotos = 30;
-      if ((selectedFiles.length >= minPhotos) && (selectedFiles.length <= maxPhotos)) {
-        uploadButtonElement.disabled = false;
-      } else {
-        uploadStatusTextElement.innerText += ((selectedFiles.length < minPhotos) ? `\n(Minimum ${minPhotos})` : `\n(Maximum ${maxPhotos})`);
-        uploadButtonElement.disabled = true;
+      const canUpload = (selectedFiles.length >= minPhotos) && (selectedFiles.length <= maxPhotos);
+      uploadButtonElement.disabled = !canUpload;
+      notifyEmailInputElement.checked = true;
+      notifyEmailInputElement.disabled = !canUpload;
+      notifyEmailLabel.style.display = canUpload ? "" : "none";
+      if (!canUpload) {
+        uploadStatusTextElement.innerText += (selectedFiles.length < minPhotos) ? ` (Minimum ${minPhotos})` : ` (Maximum ${maxPhotos})`;
       }
     }
 
@@ -748,7 +781,13 @@
               <td><button id="upload-button" class="styled green">Upload</button></td>
             </tr>
             <tr>
-              <td><span id="upload-status-text"></span></td>
+              <td>
+                <span id="upload-status-text"></span>
+                <label class="notify-email">
+                  <input id="notify-email-input" type="checkbox" checked>
+                  <span>Email on Completion</span>
+                </label>
+              </td>
               <td><button id="reset-button" class="styled red">Reset</button></td>
             </tr>
           </table>
@@ -801,6 +840,8 @@
   const browseFilesUIElement = document.getElementById("browse-ui");
   const uploadOptionsUIElement = document.getElementById("upload-ui");
   const sessionNameInputElement = document.getElementById("session-name-input");
+  const notifyEmailInputElement = document.getElementById("notify-email-input");
+  const notifyEmailLabel = notifyEmailInputElement.closest("label");
   const uploadStatusTextElement = document.getElementById("upload-status-text");
   const uploadButtonElement = document.getElementById("upload-button");
   const resetButton = document.getElementById("reset-button");
@@ -902,6 +943,8 @@
     // disable modifying elements
     uploadButtonElement.disabled = true;
     sessionNameInputElement.disabled = true;
+    notifyEmailInputElement.disabled = true;
+    notifyEmailLabel.style.display = "none";
     resetButton.disabled = true;
     document.body.classList.add("loading");
     window.addEventListener("beforeunload", warnBeforeUnload);
@@ -931,7 +974,7 @@
       console.log("Notifying server of upload completion");
       const notifyResponse = await fetch(
         "https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com/createSession",
-        {method: "POST", headers: {"Authorization": bearer}, body: JSON.stringify({"sessionId": presignedURLData.sessionId, "sessionName": sessionNameInputElement.value})}
+        {method: "POST", headers: {"Authorization": bearer}, body: JSON.stringify({"sessionId": presignedURLData.sessionId, "sessionName": sessionNameInputElement.value, "notifyEmail": notifyEmailInputElement.checked})}
       )
       if (!notifyResponse.ok)
         throw new Error(`Unable to notify server of upload completion (error code ${notifyResponse.status})`);
@@ -949,6 +992,8 @@
       uploadStatusTextElement.innerText = "Upload Failed" + (error == "Error: 403" ? " - Account Disabled" : "");
       uploadButtonElement.disabled = false;
       sessionNameInputElement.disabled = false;
+      notifyEmailInputElement.disabled = false;
+      notifyEmailLabel.style.display = "";
     }
 
     // enable modifying elements
