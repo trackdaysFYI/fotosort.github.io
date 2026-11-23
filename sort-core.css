@@ -1,6 +1,7 @@
 @font-face {
   font-family: "FunnelSans";
   src: url("fonts/FunnelSans-Regular.ttf");
+  font-display: swap;
 }
 
 :root {

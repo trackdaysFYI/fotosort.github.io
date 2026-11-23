@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Site Admin</title>
+  <script src="https://cdn.auth0.com/js/auth0-spa-js/2.0/auth0-spa-js.production.js"></script>
+  <style>
+    :root {
+      --bg: #22262a;
+      --panel: #2b3036;
+      --line: #3c434b;
+      --text: #f0f2f4;
+      --muted: #a8b0b8;
+      --accent: #3973ac;
+      --ok: #2f8f5b;
+      --err: #b85a4a;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+    }
+    * {box-sizing: border-box;}
+    body {margin: 0; padding: 1.25rem 1.5rem 2rem;}
+    a {color: var(--accent); text-decoration: none; cursor: pointer;}
+    a:hover {text-decoration: underline;}
+    h1, h2, h3 {margin: 0 0 0.6rem;}
+    h1 {font-size: 1.35rem; font-weight: 650;}
+    h2 {font-size: 1.05rem; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em;}
+    .top {display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin-bottom: 1rem;}
+    .muted {color: var(--muted);}
+    .flash {padding: 0.65rem 0.8rem; border-radius: 8px; margin-bottom: 1rem; background: var(--panel);}
+    .flash.ok {border-left: 3px solid var(--ok);}
+    .flash.err {border-left: 3px solid var(--err);}
+    .error {padding: 0.75rem 0.9rem; border-radius: 8px; background: #3a2a28; color: #f0c4bc; margin-bottom: 1rem;}
+    .card {background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden;}
+    .card-h {padding: 0.7rem 0.9rem; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 0.5rem; align-items: center;}
+    .card-b {padding: 0.5rem 0;}
+    table {width: 100%; border-collapse: collapse; font-size: 0.9rem;}
+    th, td {padding: 0.45rem 0.9rem; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top;}
+    th {color: var(--muted); font-size: 0.72rem; letter-spacing: 0.05em; text-transform: uppercase;}
+    tr:last-child td {border-bottom: 0;}
+    .pill {display: inline-block; padding: 0.1rem 0.45rem; border-radius: 999px; background: #3a4450; color: var(--text); font-size: 0.75rem; font-weight: 650;}
+    .pill.edit {background: #35506e;}
+    .pill.delete {background: #6e3a35;}
+    .pill.create {background: #355e48;}
+    .empty {padding: 1rem 0.9rem; color: var(--muted);}
+    form.stack {display: flex; flex-direction: column; gap: 0.7rem; max-width: 42rem;}
+    label.field {display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.72rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted);}
+    input, select, textarea {width: 100%; border: 1px solid var(--line); border-radius: 8px; background: #1c2024; color: var(--text); font: inherit; font-size: 0.92rem; padding: 0.45rem 0.6rem; letter-spacing: 0; text-transform: none;}
+    textarea {min-height: 4rem; resize: vertical;}
+    .actions {display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.4rem;}
+    button, .btn {border: 0; border-radius: 8px; padding: 0.45rem 0.85rem; font: inherit; font-size: 0.9rem; font-weight: 650; cursor: pointer;}
+    .btn-accept {background: var(--accent); color: white;}
+    .btn-reject {background: #5a3d3a; color: #f3d4cf;}
+    .btn-ghost {background: transparent; color: var(--muted); border: 1px solid var(--line);}
+    .diff {display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem;}
+    @media (max-width: 700px) {.diff {grid-template-columns: 1fr;}}
+    .diff .box, .snapshot {background: #1c2024; border: 1px solid var(--line); border-radius: 8px; padding: 0.7rem 0.8rem;}
+    .diff h3, .snapshot h3 {font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 0.45rem;}
+    .kv {display: grid; grid-template-columns: 7.5rem 1fr; gap: 0.2rem 0.5rem; font-size: 0.88rem;}
+    .kv span:nth-child(odd) {color: var(--muted);}
+    .changed {color: #e7c27a;}
+    .meta {font-size: 0.85rem; color: var(--muted); margin-bottom: 1rem;}
+    .hidden {display: none !important;}
+    code {font-size: 0.85em;}
+    #denied, #loading {max-width: 32rem; margin: 4rem auto; text-align: center;}
+  </style>
+</head>
+<body>
+  <div id="loading">Signing in…</div>
+  <div id="denied" class="hidden">
+    <h1>Access denied</h1>
+    <p class="muted">This page is limited to an authorized admin account.</p>
+    <button class="btn-ghost" id="denied-logout" type="button">Log out</button>
+  </div>
+
+  <div id="app" class="hidden">
+    <div class="top">
+      <div>
+        <h1><a id="home-link" style="color: inherit; text-decoration: none;">Site Admin</a></h1>
+        <div class="muted">Review console · lap records</div>
+      </div>
+      <div class="actions">
+        <button class="btn-ghost" id="refresh-btn" type="button">Refresh</button>
+        <button class="btn-ghost" id="logout-btn" type="button">Log out</button>
+      </div>
+    </div>
+    <div id="flash" class="flash hidden"></div>
+    <div id="view"></div>
+  </div>
+
+  <script>
+    const API_BASE = "https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com";
+    const TIMING_DEVICES = [
+      "Official Result",
+      "Transponder",
+      "Data Logger (AiM/RaceBox)",
+      "Phone GPS",
+      "Video",
+      "Other/My Imagination",
+    ];
+    const RECORD_KEYS = [
+      "time", "date", "vehicleType", "vehicleClass", "vehicleYear",
+      "vehicleMake", "vehicleModel", "evidence", "timingDevice", "holder", "subtrack",
+    ];
+    const PROPOSED_KEYS = [
+      "time", "date", "vehicleType", "vehicleClass", "vehicleYear",
+      "vehicleMake", "vehicleModel", "evidence", "timingDevice",
+    ];
+
+    let auth0Client = null;
+    let accessToken = null;
+    let route = {view: "queue"};
+
+    function $(id) { return document.getElementById(id); }
+
+    function showFlash(message, kind) {
+      const el = $("flash");
+      if (!message) {
+        el.className = "flash hidden";
+        el.textContent = "";
+        return;
+      }
+      el.className = "flash " + (kind || "ok");
+      el.textContent = message;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function displayValue(value) {
+      if (value === undefined || value === null || value === "") return "—";
+      return escapeHtml(value);
+    }
+
+    function parseHash() {
+      const raw = (location.hash || "#queue").slice(1);
+      const [view, ...rest] = raw.split("/");
+      if (view === "event" && rest.length >= 1) {
+        return {view: "event", eventId: decodeURIComponent(rest[0])};
+      }
+      return {view: "queue"};
+    }
+
+    function setRoute(next) {
+      if (next.view === "event") {
+        location.hash = `event/${encodeURIComponent(next.eventId)}`;
+      } else {
+        location.hash = "queue";
+      }
+    }
+
+    async function createAuth0Client() {
+      return auth0.createAuth0Client({
+        domain: "login.fotosort.com",
+        clientId: "t8MAyGQPxUK0k673gQc7O8zhf6XtrZoD",
+        cacheLocation: "localstorage",
+        authorizationParams: {
+          redirect_uri: window.location.origin + "/site-admin.html",
+          audience: "https://9jy8ljy0k0.execute-api.us-east-1.amazonaws.com",
+        },
+      });
+    }
+
+    function showDenied() {
+      $("loading").classList.add("hidden");
+      $("app").classList.add("hidden");
+      $("denied").classList.remove("hidden");
+    }
+
+    async function api(action, payload) {
+      // Match console.html: Authorization only — do not set Content-Type
+      // (application/json forces a preflight that APIGW CORS may reject).
+      const response = await fetch(`${API_BASE}/siteAdmin`, {
+        method: "POST",
+        headers: {"Authorization": `Bearer ${accessToken}`},
+        body: JSON.stringify({resource: "lapRecords", action, ...payload}),
+      });
+      let data = null;
+      const text = await response.text();
+      if (text) {
+        try { data = JSON.parse(text); } catch (_) { data = {error: text}; }
+      }
+      if (!response.ok) {
+        if (response.status === 403) showDenied();
+        const err = new Error((data && data.error) || `Request failed (${response.status})`);
+        err.status = response.status;
+        err.data = data;
+        throw err;
+      }
+      return data;
+    }
+
+    function kvBlock(keys, source, proposed) {
+      return keys.map((key) => {
+        const current = source ? source[key] : undefined;
+        const changed = proposed && proposed[key] !== undefined && proposed[key] !== (source?.[key] ?? "");
+        let shown;
+        if (source === proposed) {
+          if (current === undefined || current === null) shown = "—";
+          else if (current === "") shown = "∅ clear";
+          else shown = escapeHtml(current);
+        } else {
+          shown = displayValue(current);
+        }
+        return `<span>${escapeHtml(key)}</span><span class="${changed ? "changed" : ""}">${shown}</span>`;
+      }).join("");
+    }
+
+    function field(name, label, value, type) {
+      if (type === "select-vehicle") {
+        return `<label class="field">${label}
+          <select name="${name}">
+            <option value="C" ${value === "C" ? "selected" : ""}>Car</option>
+            <option value="M" ${value === "M" ? "selected" : ""}>Motorcycle</option>
+          </select>
+        </label>`;
+      }
+      if (type === "select-timing") {
+        const options = TIMING_DEVICES.map((device) =>
+          `<option value="${escapeHtml(device)}" ${value === device ? "selected" : ""}>${escapeHtml(device)}</option>`
+        ).join("");
+        return `<label class="field">${label}<select name="${name}">${options}</select></label>`;
+      }
+      if (type === "textarea") {
+        return `<label class="field">${label}<textarea name="${name}">${escapeHtml(value || "")}</textarea></label>`;
+      }
+      const inputType = type || "text";
+      return `<label class="field">${label}<input name="${name}" type="${inputType}" value="${escapeHtml(value ?? "")}"></label>`;
+    }
+
+    function formValues(form) {
+      const data = {};
+      new FormData(form).forEach((value, key) => { data[key] = value; });
+      return data;
+    }
+
+    function queueSummary(item) {
+      const proposed = item.proposed || {};
+      const current = item.current || {};
+      if (item.action === "create") {
+        return {
+          holder: proposed.holder || "—",
+          time: proposed.time || "—",
+        };
+      }
+      return {
+        holder: current.holder || "—",
+        time: (proposed.time != null ? proposed.time : current.time) || "—",
+      };
+    }
+
+    async function renderQueue() {
+      const view = $("view");
+      view.innerHTML = `<p class="muted">Loading queue…</p>`;
+      try {
+        const data = await api("listQueue", {});
+        const events = data.events || [];
+        const rows = events.length ? events.map((item) => {
+          const summary = queueSummary(item);
+          return `
+          <tr>
+            <td><span class="pill ${escapeHtml(item.action || "")}">${escapeHtml(item.action || "")}</span></td>
+            <td>
+              <a data-nav="event" data-event="${escapeHtml(item.eventId)}">${escapeHtml(item.track)}</a>
+              <div class="muted" style="font-size:0.78rem;">${escapeHtml(item.recordId || "")}</div>
+            </td>
+            <td>${escapeHtml(summary.holder)}</td>
+            <td>${escapeHtml(summary.time)}</td>
+            <td>${escapeHtml(item.note || "—")}</td>
+            <td class="muted">${escapeHtml(item.submittedAt || "—")}</td>
+          </tr>`;
+        }).join("") : `<tr><td colspan="6" class="empty">No pending events.</td></tr>`;
+
+        view.innerHTML = `
+          <section class="card">
+            <div class="card-h">
+              <h2 style="margin:0;color:inherit;text-transform:none;letter-spacing:0;font-size:1rem;">Pending events</h2>
+              <span class="muted">${events.length}</span>
+            </div>
+            <div class="card-b">
+              <table>
+                <thead><tr><th>Action</th><th>Track / Record</th><th>Holder</th><th>Time</th><th>Note</th><th>Submitted</th></tr></thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+          </section>`;
+      } catch (err) {
+        view.innerHTML = `<div class="error">Unable to load queue: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    async function renderEvent(eventId) {
+      const view = $("view");
+      view.innerHTML = `<p class="muted">Loading event…</p>`;
+      try {
+        const data = await api("getItem", {eventId});
+        const eventItem = data.event || {};
+        const current = data.current || {};
+        const proposed = data.proposed || {};
+        const values = data.values || {};
+        const action = eventItem.action;
+        const isCreate = action === "create";
+        const isEdit = action === "edit";
+        const isDelete = action === "delete";
+
+        let previewHtml = "";
+        if (isEdit) {
+          previewHtml = `
+            <div class="diff">
+              <div class="box"><h3>Current</h3><div class="kv">${kvBlock(RECORD_KEYS, current, proposed)}</div></div>
+              <div class="box"><h3>Proposed (submitted)</h3><div class="kv">${kvBlock(PROPOSED_KEYS, proposed, proposed)}</div></div>
+            </div>`;
+        } else if (isDelete) {
+          previewHtml = `
+            <div class="snapshot" style="margin-bottom:1rem;">
+              <h3>Current record snapshot</h3>
+              <div class="kv">${kvBlock(RECORD_KEYS, current, null)}</div>
+            </div>`;
+        }
+
+        const editFields = (isCreate || isEdit) ? `
+          ${field("time", "Time", values.time || "")}
+          ${field("date", "Date", values.date || "", "date")}
+          ${field("holder", "Holder", values.holder || "")}
+          ${field("subtrack", "Subtrack", values.subtrack || "")}
+          ${field("vehicleType", "Vehicle type", values.vehicleType || "", "select-vehicle")}
+          ${field("vehicleClass", "Class", values.vehicleClass || "")}
+          ${field("vehicleYear", "Year", values.vehicleYear ?? "")}
+          ${field("vehicleMake", "Make", values.vehicleMake || "")}
+          ${field("vehicleModel", "Model", values.vehicleModel || "")}
+          ${field("evidence", "Evidence", values.evidence || "")}
+          ${field("timingDevice", "Timing device", values.timingDevice || "", "select-timing")}
+        ` : "";
+
+        const acceptLabel = isCreate ? "Approve create" : "Accept";
+
+        view.innerHTML = `
+          <div class="actions" style="margin-bottom:1rem;">
+            <button class="btn-ghost" type="button" data-nav="queue">Back to queue</button>
+          </div>
+          <div class="meta">
+            <span class="pill ${escapeHtml(action || "")}">${escapeHtml(action || "")}</span>
+            · track <strong>${escapeHtml(eventItem.track)}</strong>
+            · record <code>${escapeHtml(eventItem.recordId)}</code>
+            · event <code>${escapeHtml(eventItem.eventId)}</code>
+            · submitted ${escapeHtml(eventItem.submittedAt || "—")}
+            ${eventItem.sourceIp ? ` · ip ${escapeHtml(eventItem.sourceIp)}` : ""}
+          </div>
+          ${previewHtml}
+          <form class="stack" id="event-form">
+            ${editFields}
+            ${field("note", "Submitter note", eventItem.note || "", "textarea")}
+            ${!isCreate ? field("reviewNote", "Review note (optional)", "", "textarea") : ""}
+            <div class="actions">
+              <button class="btn-accept" type="submit">${acceptLabel}</button>
+              <button class="btn-reject" type="button" id="reject-event">Reject</button>
+              <button class="btn-ghost" type="button" data-nav="queue">Cancel</button>
+            </div>
+          </form>`;
+
+        $("event-form").addEventListener("submit", async (submitEvent) => {
+          submitEvent.preventDefault();
+          const formData = formValues(submitEvent.target);
+          const reviewNote = formData.reviewNote || "";
+          const note = formData.note || "";
+          const fields = {...formData};
+          delete fields.reviewNote;
+          delete fields.note;
+          try {
+            const payload = {eventId, reviewNote};
+            if (isCreate || isEdit) payload.fields = fields;
+            if (isDelete) payload.note = note;
+            const result = await api("acceptEvent", payload);
+            showFlash(result.message || "Accepted.", "ok");
+            setRoute({view: "queue"});
+          } catch (err) {
+            showFlash(err.message, "err");
+          }
+        });
+        $("reject-event").addEventListener("click", async () => {
+          if (!confirm(isCreate ? "Reject this create?" : "Reject this event?")) return;
+          const formData = formValues($("event-form"));
+          try {
+            const result = await api("rejectEvent", {
+              eventId,
+              reviewNote: formData.reviewNote || "",
+            });
+            showFlash(result.message || "Rejected.", "ok");
+            setRoute({view: "queue"});
+          } catch (err) {
+            showFlash(err.message, "err");
+          }
+        });
+      } catch (err) {
+        view.innerHTML = `<div class="error">${escapeHtml(err.message)}</div>
+          <button class="btn-ghost" type="button" data-nav="queue">Back to queue</button>`;
+      }
+    }
+
+    async function render() {
+      route = parseHash();
+      if (route.view === "event") return renderEvent(route.eventId);
+      return renderQueue();
+    }
+
+    function bindNav() {
+      document.addEventListener("click", (event) => {
+        const target = event.target.closest("[data-nav]");
+        if (!target) return;
+        event.preventDefault();
+        const nav = target.getAttribute("data-nav");
+        if (nav === "queue") setRoute({view: "queue"});
+        else if (nav === "event") {
+          setRoute({view: "event", eventId: target.getAttribute("data-event")});
+        }
+      });
+      window.addEventListener("hashchange", () => {
+        showFlash("", "");
+        render();
+      });
+      $("home-link").addEventListener("click", (event) => {
+        event.preventDefault();
+        setRoute({view: "queue"});
+      });
+      $("refresh-btn").addEventListener("click", () => render());
+    }
+
+    async function boot() {
+      auth0Client = await createAuth0Client();
+      const query = window.location.search;
+      if (query.includes("code=") && query.includes("state=")) {
+        await auth0Client.handleRedirectCallback();
+        window.history.replaceState({}, document.title, "/site-admin.html" + (location.hash || "#queue"));
+      }
+
+      const isAuthenticated = await auth0Client.isAuthenticated();
+      if (!isAuthenticated) {
+        await auth0Client.loginWithRedirect({
+          appState: {returnTo: "/site-admin.html"},
+        });
+        return;
+      }
+
+      accessToken = await auth0Client.getTokenSilently();
+
+      const logout = async () => {
+        await auth0Client.logout({logoutParams: {returnTo: window.location.origin + "/site-admin.html"}});
+      };
+      $("logout-btn").addEventListener("click", logout);
+      $("denied-logout").addEventListener("click", logout);
+
+      try {
+        await api("listQueue", {});
+      } catch (err) {
+        if (err.status === 403) return;
+        $("loading").textContent = "Unable to reach admin API: " + (err.message || String(err));
+        return;
+      }
+
+      $("loading").classList.add("hidden");
+      $("app").classList.remove("hidden");
+      if (!location.hash) location.hash = "queue";
+      bindNav();
+      await render();
+    }
+
+    boot().catch((err) => {
+      $("loading").textContent = "Auth failed: " + (err && err.message ? err.message : String(err));
+    });
+  </script>
+</body>
+</html>

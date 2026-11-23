@@ -1626,17 +1626,17 @@ const FS = (() => {
   }
 
   async function start(cfg) {
-    const loader = document.querySelector("[data-fs-loader]");
-    const loaderText = document.querySelector("[data-fs-loader-text]");
-    const loaderSpinner = loader && loader.querySelector(".fs-spinner");
     let ds;
     try {
       ds = await loadDataset(cfg);
     } catch (err) {
       console.error(err);
-      if (loaderSpinner) loaderSpinner.remove();
-      if (loaderText) {
-        loaderText.textContent = `${sessionLoadErrorMessage(err)}. Opening console…`;
+      const failedLoader = document.querySelector("[data-fs-loader]");
+      const failedText = document.querySelector("[data-fs-loader-text]");
+      const failedSpinner = failedLoader && failedLoader.querySelector(".fs-spinner");
+      if (failedSpinner) failedSpinner.remove();
+      if (failedText) {
+        failedText.textContent = `${sessionLoadErrorMessage(err)}. Opening console…`;
       }
       setTimeout(() => {
         location.replace("/console.html");
@@ -1645,7 +1645,8 @@ const FS = (() => {
     }
     const app = new App(ds, cfg);
     const restored = app.restoreProgress();
-    if (loader) loader.remove();
+    const liveLoader = document.querySelector("[data-fs-loader]");
+    if (liveLoader) liveLoader.remove();
     document.getElementById("app").hidden = false;
     app.mountChrome();
     app.enableKeys();

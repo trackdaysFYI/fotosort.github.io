@@ -1,0 +1,1763 @@
+/* FotoSort Studio. © 2025–2026 FotoSort.com */
+const PREFS_KEY = "fotosort-queue";
+const SETTINGS_KEY = "fotosort-sort-settings";
+const REF_SAMPLE = 16;
+const FIT_MODES = [
+  ["stretch", "Stretch"],
+  ["lock", "Lock aspect"]
+];
+const ZOOM_DEFAULT = 148;
+const GROUP_SIZE_RANGE = [50, 250];
+const GROUP_SIZE_DEFAULT = 100;
+const GROUP_ROWS_CHOICES = [
+  [1, "1 row"],
+  [2, "2 rows"],
+  [3, "3 rows"],
+  ["all", "All"]
+];
+const PREF_DEFAULTS = {
+  clusters: true,
+  menuWidth: 500,
+  fit: "stretch",
+  breaks: false,
+  groupSize: GROUP_SIZE_DEFAULT,
+  groupRows: 2
+};
+const GAP_SCALE = 36;
+
+let prefs;
+try {
+  prefs = Object.assign({}, PREF_DEFAULTS, JSON.parse(localStorage.getItem(PREFS_KEY) || "{}"));
+} catch (err) {
+  prefs = Object.assign({}, PREF_DEFAULTS);
+}
+delete prefs.gapScale;
+delete prefs.photoZoom;
+if (!FIT_MODES.some(([id]) => id === prefs.fit)) prefs.fit = PREF_DEFAULTS.fit;
+if (typeof prefs.breaks !== "boolean") prefs.breaks = PREF_DEFAULTS.breaks;
+prefs.groupSize = Math.round(Math.min(GROUP_SIZE_RANGE[1], Math.max(GROUP_SIZE_RANGE[0], Number(prefs.groupSize) || GROUP_SIZE_DEFAULT)));
+if (!GROUP_ROWS_CHOICES.some(([id]) => id === prefs.groupRows)) prefs.groupRows = PREF_DEFAULTS.groupRows;
+const applyFit = () => {
+  document.documentElement.dataset.fit = prefs.fit;
+};
+applyFit();
+const savePrefs = () => localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+
+const {makeOrdering, sample} = StudioOrder;
+
+let page = null;
+
+(async () => {
+  try {
+    if (!(await requireAuth())) return;
+  } catch (error) {
+    console.error(error);
+    const spinner = document.querySelector("[data-fs-loader] .fs-spinner");
+    const text = document.querySelector("[data-fs-loader-text]");
+    if (spinner) spinner.remove();
+    if (text) text.textContent = "Portal is unavailable. Please try again.";
+    return;
+  }
+  FS.start({
+  bbox: true,
+  logo: true,
+  zoom: ZOOM_DEFAULT,
+  zoomRange: [100, 300],
+  helpTitle: "Help",
+  helpNote: "Unsorted photos are on the right. Groups are on the left.",
+  helpStartOver: false,
+  helpRows: [
+    ["Select", "Click and drag across unsorted photos"],
+    ["Extend", "Shift-click or Shift-drag from your last selected photo"],
+    ["Adjust", "Ctrl-click or Ctrl-drag to add or remove photos"],
+    ["Group", "Click the last selected photo again, or drag onto a group / New group"],
+    ["Discard", "Drag onto Discard"],
+    ["Focus", "On a group: pull similar groups around it"],
+    ["Preview", "Right-click a photo to enlarge"],
+    ["Undo", "Ctrl + Z"]
+  ],
+  onKey(event, app) {
+    return page ? page.onKey(event, app) : false;
+  },
+  mount(app) {
+    const {el} = FS;
+    const {D, n} = app.ds;
+    const ordering = makeOrdering(D, n);
+    const qapp = document.getElementById("qapp");
+    const mbar = document.getElementById("mbar");
+    const menu = document.getElementById("menu");
+    const splitter = document.getElementById("splitter");
+    const qbar = document.getElementById("qbar");
+    const sizeField = [...document.querySelectorAll(".fs-top .fs-field")]
+      .find(label => label.childNodes[0] && label.childNodes[0].textContent === "Size");
+    const sizeInput = sizeField ? sizeField.querySelector("input[type=range]") : null;
+    if (sizeField) {
+      sizeField.classList.add("size-field");
+      sizeField.title = "Target size for unsorted photos";
+    }
+    const queueBox = document.getElementById("queue");
+    const tilesBox = document.getElementById("tiles");
+    const tag = el("span", {class: "ptag"});
+    const cards = new Map();
+    const expanded = new Set();
+    const exampleCache = new Map();
+    const baseRank = new Map(ordering.chain(Array.from({length: n}, (_, i) => i)).map((id, i) => [id, i]));
+    let queue = [];
+    let index = new Map();
+    let clusterCache = {version: -1, order: null};
+    let press = null;
+    let selected = new Uint8Array(0);
+    let selCount = 0;
+    let selFocus = -1; // most recently selected queue index (temporal)
+    let paintedLo = -1;
+    let paintedHi = -1;
+    let menuHover = false;
+    let menuOrder = [];
+    let menuRaf = 0;
+    let trashOpen = false;
+    let focusGroup = null;
+    let focusIndex = 0;
+    let preFocusOrder = null;
+    let holdOrder = false;
+    let pinGroupId = null;
+    let groupSort = "similarity";
+    let groupFilter = "";
+    const startOverCore = app.startOver.bind(app);
+    app.startOver = () => {
+      expanded.clear();
+      exampleCache.clear();
+      cards.clear();
+      trashOpen = false;
+      focusGroup = null;
+      focusIndex = 0;
+      preFocusOrder = null;
+      holdOrder = false;
+      pinGroupId = null;
+      menuOrder = [];
+      groupFilter = "";
+      const find = groupsMenu.panel.querySelector(".gmenu-find");
+      if (find) find.value = "";
+      startOverCore();
+    };
+    const GROUP_SORTS = [
+      ["similarity", "By similarity"],
+      ["name-asc", "By name (A–Z)"],
+      ["name-desc", "By name (Z–A)"],
+      ["largest", "Largest first"],
+      ["smallest", "Smallest first"]
+    ];
+    const GROUP_SORT_META = {
+      similarity: "Similarity order",
+      "name-asc": "Name A–Z",
+      "name-desc": "Name Z–A",
+      largest: "Largest first",
+      smallest: "Smallest first"
+    };
+    const nameCmp = (a, b) => a.group.name.localeCompare(b.group.name, undefined, {numeric: true, sensitivity: "base"});
+
+    /* ----- queue order ----- */
+
+    function photoDistToSample(id, sampleIds) {
+      if (!sampleIds.length) return Infinity;
+      const n = app.ds.n;
+      const D = app.ds.D;
+      const row = id * n;
+      let best = Infinity;
+      for (const y of sampleIds) {
+        const d = D[row + y];
+        if (d < best) best = d;
+      }
+      return best;
+    }
+
+    function computeQueue(state) {
+      if (focusGroup != null) {
+        const ref = groupSample(state.members.get(focusGroup) || []);
+        const dist = new Map();
+        for (const id of state.pool) dist.set(id, photoDistToSample(id, ref));
+        queue = state.pool.slice().sort((a, b) =>
+          (dist.get(a) - dist.get(b)) || (baseRank.get(a) - baseRank.get(b)) || (a - b));
+      } else if (prefs.clusters) {
+        if (clusterCache.version !== app.store.version || !clusterCache.order) {
+          clusterCache = {version: app.store.version, order: ordering.clusters(state.pool)};
+        }
+        queue = clusterCache.order.slice();
+      } else {
+        queue = state.pool.slice().sort((a, b) => baseRank.get(a) - baseRank.get(b));
+      }
+      index = new Map(queue.map((id, i) => [id, i]));
+      if (selected.length !== queue.length) {
+        selected = new Uint8Array(queue.length);
+        selCount = 0;
+        selFocus = -1;
+      }
+    }
+
+    function rangeBounds(a, b) {
+      if (a < 0 || b < 0) return [-1, -1];
+      return a <= b ? [a, b] : [b, a];
+    }
+
+    function selectionTip() {
+      if (press && !press.dragging && !press.fromSelection && press.k >= 0) return press.k;
+      return activeTip();
+    }
+
+    function selectedIds() {
+      const out = [];
+      for (let i = 0; i < selected.length; i += 1) if (selected[i]) out.push(queue[i]);
+      return out;
+    }
+
+    function hasSelection() {
+      return selCount > 0;
+    }
+
+    function wipeSelection() {
+      if (selCount) selected.fill(0);
+      selCount = 0;
+      selFocus = -1;
+    }
+
+    function restoreKeptSelection(ids) {
+      const want = new Set(ids);
+      if (selected.length !== queue.length) selected = new Uint8Array(queue.length);
+      selCount = 0;
+      selFocus = -1;
+      for (let i = 0; i < queue.length; i += 1) {
+        if (!want.has(queue[i])) continue;
+        selected[i] = 1;
+        selCount += 1;
+        selFocus = i;
+      }
+    }
+
+    function refreshSelection() {
+      paintSelection();
+      renderBar(app.state);
+      scheduleMenu();
+    }
+
+    function isSelectedIndex(k) {
+      return k >= 0 && k < selected.length && selected[k] !== 0;
+    }
+
+    function lastSelected() {
+      for (let i = selected.length - 1; i >= 0; i -= 1) if (selected[i]) return i;
+      return -1;
+    }
+
+    function activeTip() {
+      if (selFocus >= 0 && selected[selFocus]) return selFocus;
+      return lastSelected();
+    }
+
+    function noteSelFocus(k) {
+      if (k >= 0 && k < selected.length && selected[k]) selFocus = k;
+      else if (selFocus >= 0 && !selected[selFocus]) selFocus = -1;
+    }
+
+    function shiftOrigin() {
+      const tip = activeTip();
+      return tip >= 0 ? tip : 0;
+    }
+
+    function snapshotSelection() {
+      return {bits: selected.slice(), count: selCount, focus: selFocus};
+    }
+
+    function restoreSelection(snap) {
+      if (snap.bits.length !== selected.length) {
+        wipeSelection();
+        return;
+      }
+      selected.set(snap.bits);
+      selCount = snap.count;
+      selFocus = snap.focus;
+      if (selFocus >= 0 && !selected[selFocus]) selFocus = -1;
+    }
+
+    function activeRefIds() {
+      // While dragging unsorted photos, keep ranking groups against those photos even
+      // if the live selection was cleared (single-photo lift) or the pointer left the menu.
+      if (app.drag && app.drag.ids && app.drag.ids.length) return app.drag.ids;
+      return selectedIds();
+    }
+
+    function reference() {
+      const ids = activeRefIds();
+      if (ids.length) return sample(ids, REF_SAMPLE);
+      // With nothing selected, rank groups by similarity to the first photo in the queue.
+      return queue.length ? [queue[0]] : [];
+    }
+
+    function groupSample(list) {
+      if (!list.length) return [];
+      return sample(ordering.examples(list), Math.min(REF_SAMPLE, list.length));
+    }
+
+    function groupDistance(a, b) {
+      if (!a.length || !b.length) return Infinity;
+      const n = app.ds.n;
+      const D = app.ds.D;
+      let total = 0;
+      let counted = 0;
+      for (const x of a) {
+        let best = Infinity;
+        const row = x * n;
+        for (const y of b) {
+          const d = D[row + y];
+          if (d < best) best = d;
+        }
+        if (best < Infinity) {
+          total += best;
+          counted += 1;
+        }
+      }
+      return counted ? total / counted : Infinity;
+    }
+
+    // Nearest-neighbor chain so similar groups sit next to each other for easy merging.
+    function orderGroupsBySimilarity(state) {
+      const store = app.store;
+      const rows = store.groups.map(group => {
+        const list = state.members.get(group.id) || [];
+        const sorted = list.slice().sort((a, b) => store.stamp[b] - store.stamp[a]);
+        return {group, id: group.id, dist: Infinity, members: sorted};
+      });
+      const nonempty = rows.filter(r => r.members.length);
+      const empty = rows.filter(r => !r.members.length);
+      if (nonempty.length < 2) return [...nonempty, ...empty];
+
+      const samples = new Map(nonempty.map(r => [r.id, groupSample(r.members)]));
+      nonempty.sort((a, b) => (app.photoCountAll(b.members) - app.photoCountAll(a.members)) || (a.id - b.id));
+      const ids = nonempty.map(r => r.id);
+      const byId = new Map(nonempty.map(r => [r.id, r]));
+      const done = new Set();
+      const link = new Map(ids.map(id => [id, Infinity]));
+      const order = [];
+      let cur = ids[0];
+      while (cur != null) {
+        order.push(byId.get(cur));
+        done.add(cur);
+        let next = null;
+        let nextD = Infinity;
+        for (const id of ids) {
+          if (done.has(id)) continue;
+          const d = groupDistance(samples.get(cur), samples.get(id));
+          if (d < link.get(id)) link.set(id, d);
+          if (link.get(id) < nextD) {
+            nextD = link.get(id);
+            next = id;
+          }
+        }
+        cur = next;
+      }
+      return [...order, ...empty];
+    }
+
+    /* ----- rendering: queue ----- */
+
+    function gapWidth(t) {
+      return Math.round(t * t * GAP_SCALE * (app.zoom / ZOOM_DEFAULT));
+    }
+
+    function gapBreak(t) {
+      const node = el("div", {
+        class: "gap-break",
+        "data-gap": String(t),
+        "aria-hidden": "true"
+      });
+      node.style.width = gapWidth(t) + "px";
+      node.style.setProperty("--gap-t", t.toFixed(3));
+      // Ease red in late so modest breaks stay clearly yellow.
+      node.style.setProperty("--gap-red", Math.pow(t, 2.4).toFixed(3));
+      return node;
+    }
+
+    function renderQueue(state) {
+      const g = ordering.gaps(queue);
+      const lo = ordering.dc * 0.6;
+      const hi = ordering.dc * 1.4;
+      const nodes = [];
+      for (let i = 0; i < queue.length; i += 1) {
+        const id = queue[i];
+        const t = i ? Math.min(1, Math.max(0, (g[i] - lo) / (hi - lo))) : 0;
+        if (prefs.breaks && t > 0) nodes.push(gapBreak(t));
+        const node = app.tile(id, "queue");
+        node.style.marginLeft = "";
+        delete node.dataset.gap;
+        node.classList.remove("pending", "preview");
+        nodes.push(node);
+      }
+      paintedLo = -1;
+      paintedHi = -1;
+      tilesBox.classList.remove("is-selecting");
+      qapp.classList.remove("is-selecting");
+      const apply = () => tilesBox.replaceChildren(...nodes);
+      if (nodes.length <= 900) FS.flip(() => tilesBox.querySelectorAll(".ph"), apply);
+      else apply();
+      if (!queue.length) {
+        tilesBox.replaceChildren(el("div", {class: "fs-empty", html:
+          "<b>Sorting complete</b><br>To merge two groups, drag one onto the other.<br>Click a group name to rename it.<br>Drag the splitter to resize the groups panel.<br>Use Focus on a group to pull similar groups around it.<br>When you are finished, click Export script."}));
+      }
+      paintSelection();
+      renderBar(state);
+    }
+
+    const dropdowns = [];
+    function makeMenu({title, label, wrap = true, fill, onOpen, onButton}) {
+      let open = false;
+      const labelEl = el("span", {class: "groups-meta-label", text: label});
+      const button = el("button", {
+        class: "groups-meta",
+        type: "button",
+        title
+      }, labelEl, el("span", {class: "caret", text: "▾"}));
+      const panel = el("div", {class: "gmenu", hidden: true});
+      const menu = {button, label: labelEl, panel};
+      menu.root = wrap ? el("div", {class: "qsort"}, button, panel) : button;
+      menu.isOpen = () => open;
+      menu.close = () => {
+        open = false;
+        panel.hidden = true;
+        button.classList.remove("open");
+      };
+      menu.fill = () => { panel.replaceChildren(...fill()); };
+      menu.open = () => {
+        for (const other of dropdowns) if (other !== menu) other.close();
+        open = true;
+        panel.hidden = false;
+        button.classList.add("open");
+        menu.fill();
+        if (onOpen) onOpen(panel);
+      };
+      button.addEventListener("click", event => {
+        event.stopPropagation();
+        if (onButton && onButton() === true) return;
+        if (open) menu.close();
+        else menu.open();
+      });
+      document.addEventListener("pointerdown", event => {
+        if (!open) return;
+        if (button.contains(event.target) || panel.contains(event.target)) return;
+        menu.close();
+      });
+      dropdowns.push(menu);
+      return menu;
+    }
+
+    const QUEUE_ORDERS = [
+      [true, "Biggest cluster"],
+      [false, "Linear similarity"]
+    ];
+    const queueMenu = makeMenu({
+      title: "Order unsorted photos",
+      label: prefs.clusters ? "Biggest cluster" : "Linear similarity",
+      fill() {
+        const focused = focusGroup != null;
+        return [
+          el("div", {class: "gmenu-label", text: "Order"}),
+          ...QUEUE_ORDERS.map(([clusters, text]) => el("button", {
+            class: "gmenu-opt" + (!focused && prefs.clusters === clusters ? " active" : ""),
+            type: "button",
+            text,
+            onclick: event => {
+              event.stopPropagation();
+              queueMenu.close();
+              const wasFocused = focusGroup != null;
+              if (!wasFocused && prefs.clusters === clusters) return;
+              prefs.clusters = clusters;
+              savePrefs();
+              if (wasFocused) clearGroupFocus();
+              else app.update("settings");
+            }
+          }))
+        ];
+      }
+    });
+
+    function renderBar(state) {
+      const ids = selectedIds();
+      const n = app.photoCountAll(ids);
+      const done = !state.pool.length;
+      const focusName = focusGroup != null ? (app.store.group(focusGroup)?.name || "focused group") : "";
+      if (done) queueMenu.close();
+      else if (focusGroup != null) {
+        queueMenu.label.textContent = `Similarity to ${focusName}`;
+        queueMenu.button.title = "Choose Biggest cluster or Linear similarity to leave focus";
+      } else {
+        queueMenu.label.textContent = prefs.clusters ? "Biggest cluster" : "Linear similarity";
+        queueMenu.button.title = "Order unsorted photos";
+      }
+      const hint = done ? null
+        : focusGroup != null
+          ? `Ordered by similarity to ${focusName}`
+        : press && press.dragging
+          ? "Drop onto a group to add these photos, onto New group, or onto Discard."
+          : press && !press.fromSelection
+            ? "Release to keep this selection."
+          : n
+            ? "Click the most recently selected photo again to make a group, or drag the selection onto a group."
+            : "Click a photo and drag to the end of the run, then release.";
+      qbar.replaceChildren(...FS.nodes(
+        el("b", {text: done ? "Unsorted photos" : (n ? `${n} selected` : "Unsorted photos")}),
+        done ? el("span", {class: "bar-meta", text: "No photos remaining"}) : queueMenu.root,
+        n && !done ? el("span", {class: "bar-meta", text: "from unsorted"}) : null,
+        sizeField,
+        el("span", {class: "grow"}),
+        hint ? el("span", {class: "bar-hint", text: hint}) : null));
+    }
+
+    function selectionBounds() {
+      if (!selCount) return [-1, -1];
+      let lo = 0;
+      while (lo < selected.length && !selected[lo]) lo += 1;
+      let hi = selected.length - 1;
+      while (hi > lo && !selected[hi]) hi -= 1;
+      return [lo, hi];
+    }
+
+    function paintSelection() {
+      const [lo, hi] = selectionBounds();
+      const from = Math.min(paintedLo < 0 ? Infinity : paintedLo, lo < 0 ? Infinity : lo);
+      const to = Math.max(paintedHi, hi);
+      if (from !== Infinity && to >= from) {
+        for (let i = from; i <= to && i < queue.length; i += 1) {
+          app.tile(queue[i], "queue").classList.toggle("pending", selected[i] !== 0);
+        }
+      }
+      paintedLo = lo;
+      paintedHi = hi;
+      tilesBox.classList.toggle("is-selecting", selCount > 0);
+      qapp.classList.toggle("is-selecting", selCount > 0);
+      showTag();
+    }
+
+    // The run keeps the end opposite the most recently selected photo.
+    // Shift moves the near end; photos that fall outside that span turn off.
+    function shiftAnchor() {
+      const origin = shiftOrigin();
+      if (!isSelectedIndex(origin)) return {anchor: origin, blockLo: -1, blockHi: -1};
+      let lo = origin;
+      let hi = origin;
+      while (lo > 0 && selected[lo - 1]) lo -= 1;
+      while (hi < selected.length - 1 && selected[hi + 1]) hi += 1;
+      return {anchor: (origin - lo) >= (hi - origin) ? lo : hi, blockLo: lo, blockHi: hi};
+    }
+
+    function paintShiftHover(k) {
+      const spec = shiftAnchor();
+      const [lo, hi] = rangeBounds(spec.anchor, k);
+      const [selLo, selHi] = selectionBounds();
+      const from = Math.min(
+        paintedLo < 0 ? Infinity : paintedLo,
+        selLo < 0 ? Infinity : selLo,
+        lo < 0 ? Infinity : lo,
+        spec.blockLo < 0 ? Infinity : spec.blockLo
+      );
+      const to = Math.max(paintedHi, selHi, hi, spec.blockHi);
+      if (from !== Infinity && to >= from) {
+        for (let i = from; i <= to && i < queue.length; i += 1) {
+          let on = selected[i] !== 0;
+          if (spec.blockLo >= 0 && i >= spec.blockLo && i <= spec.blockHi) on = false;
+          if (lo >= 0 && i >= lo && i <= hi) on = true;
+          app.tile(queue[i], "queue").classList.toggle("pending", on);
+        }
+      }
+      paintedLo = from === Infinity ? -1 : from;
+      paintedHi = from === Infinity ? -1 : to;
+      const selecting = hi >= 0 || selCount > 0;
+      tilesBox.classList.toggle("is-selecting", selecting);
+      qapp.classList.toggle("is-selecting", selecting);
+    }
+
+    function clearSelection() {
+      wipeSelection();
+      paintSelection();
+      tag.remove();
+      tilesBox.classList.remove("commit-ready");
+      renderBar(app.state);
+      scheduleMenu();
+    }
+
+    function commitSelection() {
+      const ids = selectedIds();
+      if (!ids.length) return;
+      wipeSelection();
+      app.drop("new", ids);
+    }
+
+    let tipHover = false;
+    let shiftHeld = false;
+    let shiftPreviewK = -1;
+    let lastHoverK = -1;
+
+    function gestureTo(k) {
+      if (!press || k < 0) return;
+      press.k = k;
+      if (press.mode === "replace") {
+        selected.fill(0);
+        selCount = 0;
+        const [lo, hi] = rangeBounds(press.anchor, k);
+        for (let i = lo; i <= hi; i += 1) {
+          selected[i] = 1;
+          selCount += 1;
+        }
+      } else if (press.mode === "add") {
+        restoreSelection(press.snap);
+        if (press.blockLo >= 0) {
+          for (let i = press.blockLo; i <= press.blockHi; i += 1) {
+            if (!selected[i]) continue;
+            selected[i] = 0;
+            selCount -= 1;
+          }
+        }
+        const [lo, hi] = rangeBounds(press.anchor, k);
+        for (let i = lo; i <= hi; i += 1) {
+          if (selected[i]) continue;
+          selected[i] = 1;
+          selCount += 1;
+        }
+      } else {
+        restoreSelection(press.snap);
+        const [lo, hi] = rangeBounds(press.anchor, k);
+        const on = press.paintOn ? 1 : 0;
+        for (let i = lo; i <= hi; i += 1) {
+          if (selected[i] === on) continue;
+          selected[i] = on;
+          selCount += on ? 1 : -1;
+        }
+      }
+      noteSelFocus(k);
+      if (!selCount) {
+        clearSelection();
+        return;
+      }
+      refreshSelection();
+    }
+
+    function showTag() {
+      for (const node of tilesBox.querySelectorAll(".ph.commit-tip")) node.classList.remove("commit-tip");
+      if (shiftPreviewK >= 0 && !press) {
+        const spec = shiftAnchor();
+        const [lo, hi] = rangeBounds(spec.anchor, shiftPreviewK);
+        const ids = [];
+        for (let i = 0; i < selected.length; i += 1) {
+          let on = selected[i] !== 0;
+          if (spec.blockLo >= 0 && i >= spec.blockLo && i <= spec.blockHi) on = false;
+          if (lo >= 0 && i >= lo && i <= hi) on = true;
+          if (on) ids.push(queue[i]);
+        }
+        tilesBox.classList.remove("commit-ready");
+        if (!ids.length || shiftPreviewK >= queue.length) {
+          tag.remove();
+          return;
+        }
+        tag.textContent = String(app.photoCountAll(ids));
+        tag.classList.remove("commit");
+        app.tile(queue[shiftPreviewK], "queue").append(tag);
+        return;
+      }
+      if (!selCount) {
+        tipHover = false;
+        tilesBox.classList.remove("commit-ready");
+        tag.remove();
+        return;
+      }
+      const tip = selectionTip();
+      if (tip < 0 || tip >= queue.length) {
+        tilesBox.classList.remove("commit-ready");
+        tag.remove();
+        return;
+      }
+      const tile = app.tile(queue[tip], "queue");
+      const commitReady = tipHover && !press;
+      tilesBox.classList.toggle("commit-ready", commitReady);
+      tag.textContent = commitReady ? "+ New group" : String(app.photoCountAll(selectedIds()));
+      tag.classList.toggle("commit", commitReady);
+      if (commitReady) tile.classList.add("commit-tip");
+      tile.append(tag);
+    }
+
+    function syncCommitHover(k) {
+      if (press || shiftPreviewK >= 0) return;
+      const tip = hasSelection() ? activeTip() : -1;
+      tipHover = tip >= 0 && k === tip;
+      showTag();
+    }
+
+    function syncShiftPreview(k) {
+      if (press || !shiftHeld) return;
+      const tip = activeTip();
+      if (k >= 0 && hasSelection() && k === tip) {
+        if (shiftPreviewK >= 0) {
+          shiftPreviewK = -1;
+          paintSelection();
+        }
+        tipHover = true;
+        showTag();
+        return;
+      }
+      if (k < 0) {
+        if (shiftPreviewK < 0) return;
+        shiftPreviewK = -1;
+        if (hasSelection()) paintSelection();
+        else {
+          tipHover = false;
+          tilesBox.classList.remove("commit-ready");
+          paintSelection();
+          tag.remove();
+        }
+        return;
+      }
+      tipHover = false;
+      shiftPreviewK = k;
+      paintShiftHover(k);
+      showTag();
+    }
+
+    function setShiftHeld(on) {
+      if (shiftHeld === on) return;
+      shiftHeld = on;
+      if (!on) {
+        if (shiftPreviewK >= 0) {
+          shiftPreviewK = -1;
+          if (hasSelection()) paintSelection();
+          else {
+            tipHover = false;
+            tilesBox.classList.remove("commit-ready");
+            paintSelection();
+            tag.remove();
+          }
+        }
+        if (hasSelection()) syncCommitHover(lastHoverK);
+        return;
+      }
+      if (!press) syncShiftPreview(lastHoverK);
+    }
+
+    function attachPress() {
+      const loop = () => {
+        if (!press || press.dragging) return;
+        const r = queueBox.getBoundingClientRect();
+        let vy = 0;
+        if (press.y < r.top + 50) vy = -Math.ceil((r.top + 50 - press.y) / 3);
+        else if (press.y > r.bottom - 50) vy = Math.ceil((press.y - r.bottom + 50) / 3);
+        if (vy) {
+          queueBox.scrollBy(0, vy);
+          if (!press.fromSelection) {
+            const k2 = tileIndexAt(press.x, Math.min(Math.max(press.y, r.top + 2), r.bottom - 2));
+            if (k2 >= 0) gestureTo(k2);
+          }
+        }
+        press.raf = requestAnimationFrame(loop);
+      };
+      press.raf = requestAnimationFrame(loop);
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", cancelPress);
+    }
+
+    /* ----- selecting and dragging the queue ----- */
+
+    const tileIndexAt = (x, y) => {
+      const node = document.elementFromPoint(x, y);
+      const tile = node && node.closest(".ph[data-id]");
+      if (!tile || !tilesBox.contains(tile)) return -1;
+      return index.has(Number(tile.dataset.id)) ? index.get(Number(tile.dataset.id)) : -1;
+    };
+
+    tilesBox.addEventListener("contextmenu", event => {
+      event.preventDefault();
+      const tile = event.target.closest(".ph[data-id]");
+      if (tile) app.preview(Number(tile.dataset.id));
+    });
+
+    tilesBox.addEventListener("pointerover", event => {
+      const tile = event.target.closest(".ph[data-id]");
+      if (!tile || !tilesBox.contains(tile)) return;
+      const k = index.get(Number(tile.dataset.id));
+      lastHoverK = k == null ? -1 : k;
+      if (shiftHeld && !press) syncShiftPreview(lastHoverK);
+      else syncCommitHover(lastHoverK);
+    });
+    tilesBox.addEventListener("pointerleave", () => {
+      lastHoverK = -1;
+      if (shiftHeld && !press) syncShiftPreview(-1);
+      else syncCommitHover(-1);
+    });
+
+    queueBox.addEventListener("pointerdown", event => {
+      if (event.button !== 0 || event.target.closest(".ph")) return;
+      if (hasSelection()) clearSelection();
+    });
+
+    tilesBox.addEventListener("pointerdown", event => {
+      if (event.button !== 0) return;
+      const tile = event.target.closest(".ph[data-id]");
+      if (!tile) return;
+      event.preventDefault();
+      const k = index.get(Number(tile.dataset.id));
+      if (k == null) return;
+      shiftPreviewK = -1;
+      tipHover = false;
+
+      if (event.ctrlKey || event.metaKey) {
+        press = {
+          mode: "paint",
+          paintOn: !isSelectedIndex(k),
+          snap: snapshotSelection(),
+          anchor: k,
+          k,
+          commit: false,
+          fromSelection: false,
+          singleId: null,
+          dragging: false,
+          x: event.clientX,
+          y: event.clientY,
+          sx: event.clientX,
+          sy: event.clientY,
+          raf: 0
+        };
+        gestureTo(k);
+        document.body.classList.add("scrubbing");
+        attachPress();
+        return;
+      }
+
+      // Shift keeps the far end of the run and moves the near end with the
+      // pointer, so dragging back drops the overshoot. A still click on the
+      // end photo still makes a group. Other selected clicks clear; a drag
+      // without Shift moves them.
+      const tipK = activeTip();
+      const onTip = isSelectedIndex(k) && tipK >= 0 && k === tipK;
+      const shiftSelect = event.shiftKey;
+      const fromSelection = !shiftSelect && isSelectedIndex(k);
+      const spec = shiftSelect ? shiftAnchor() : null;
+      press = {
+        mode: shiftSelect ? "add" : "replace",
+        paintOn: true,
+        snap: snapshotSelection(),
+        anchor: spec ? spec.anchor : k,
+        blockLo: spec ? spec.blockLo : -1,
+        blockHi: spec ? spec.blockHi : -1,
+        k,
+        commit: onTip,
+        fromSelection,
+        singleId: fromSelection || shiftSelect ? null : queue[k],
+        dragging: false,
+        x: event.clientX,
+        y: event.clientY,
+        sx: event.clientX,
+        sy: event.clientY,
+        raf: 0
+      };
+      if (fromSelection) {
+        paintSelection();
+      } else {
+        gestureTo(k);
+        document.body.classList.add("scrubbing");
+      }
+      renderBar(app.state);
+      attachPress();
+    });
+
+    function startDrag(event, ids) {
+      if (!ids.length) return;
+      press.dragging = true;
+      document.body.classList.remove("scrubbing");
+      app.beginDrag(ids, event);
+      renderBar(app.state);
+      scheduleMenu();
+    }
+
+    function onMove(event) {
+      if (!press) return;
+      press.x = event.clientX;
+      press.y = event.clientY;
+      if (press.dragging) {
+        app.dragMove(event);
+        return;
+      }
+      const travel = Math.hypot(event.clientX - press.sx, event.clientY - press.sy);
+      if (press.fromSelection) {
+        if (travel > 6) startDrag(event, selectedIds());
+        return;
+      }
+      const k = tileIndexAt(event.clientX, event.clientY);
+      if (k >= 0 && k !== press.k) {
+        if (k !== press.anchor) press.commit = false;
+        gestureTo(k);
+        scheduleMenu();
+      }
+      // A deliberate left pull that stays on the starting photo lifts just that photo.
+      if (press.mode !== "replace" || press.singleId == null || press.k !== press.anchor) return;
+      const dx = event.clientX - press.sx;
+      const dy = event.clientY - press.sy;
+      const queueRect = queueBox.getBoundingClientRect();
+      const outside = event.clientX < queueRect.left || event.clientX > queueRect.right ||
+        event.clientY < queueRect.top || event.clientY > queueRect.bottom;
+      const towardGroups = dx < -16 && dx * dx >= dy * dy;
+      const stillOnStart = k < 0 || k === press.anchor;
+      if (stillOnStart && (outside || towardGroups) && travel > 6) {
+        restoreSelection(press.snap);
+        wipeSelection();
+        paintSelection();
+        tag.remove();
+        startDrag(event, [press.singleId]);
+      }
+    }
+
+    function endGesture() {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", cancelPress);
+      document.body.classList.remove("scrubbing");
+      if (press) cancelAnimationFrame(press.raf);
+      const done = press;
+      press = null;
+      return done;
+    }
+
+    function onUp(event) {
+      if (!press) return;
+      const done = press;
+      endGesture();
+      if (done.dragging) {
+        app.endDrag(event);
+        if (selCount) {
+          refreshSelection();
+          syncCommitHover(tileIndexAt(event.clientX, event.clientY));
+        } else {
+          tipHover = false;
+          paintSelection();
+          tag.remove();
+          renderBar(app.state);
+          scheduleMenu();
+        }
+        return;
+      }
+      const still = Math.hypot(event.clientX - done.sx, event.clientY - done.sy) <= 6;
+      if (done.commit && still) commitSelection();
+      else if (done.fromSelection) clearSelection();
+      else if (!selCount) clearSelection();
+      else refreshSelection();
+      lastHoverK = tileIndexAt(event.clientX, event.clientY);
+      if (shiftHeld) syncShiftPreview(lastHoverK);
+      else if (!done.commit) syncCommitHover(lastHoverK);
+    }
+
+    function cancelPress() {
+      if (!press) return;
+      if (press.dragging) app.cancelDrag();
+      const snap = press.snap;
+      endGesture();
+      restoreSelection(snap);
+      if (!selCount) clearSelection();
+      else refreshSelection();
+    }
+
+    function typingTarget(event) {
+      const node = event.target;
+      return !!(node && node.closest && node.closest("input, textarea, [contenteditable]"));
+    }
+    window.addEventListener("keydown", event => {
+      if (event.key === "Shift" && !typingTarget(event)) setShiftHeld(true);
+      if (event.key === "Escape" && press) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        cancelPress();
+      }
+    }, true);
+    window.addEventListener("keyup", event => {
+      if (event.key === "Shift") setShiftHeld(false);
+    }, true);
+    window.addEventListener("blur", () => setShiftHeld(false));
+
+    page = {
+      onKey(event) {
+        const key = event.key;
+        if (key === "Escape" && queueMenu.isOpen()) { queueMenu.close(); return true; }
+        if (key === "Escape" && groupsMenu.isOpen()) { groupsMenu.close(); return true; }
+        if (key === "Escape" && rowsMenu.isOpen()) { rowsMenu.close(); return true; }
+        if (key === "Escape" && fitMenu.isOpen()) { fitMenu.close(); return true; }
+        if (key === "Escape" && hasSelection()) { clearSelection(); return true; }
+        if ((key === "Delete" || key === "Backspace") && hasSelection()) {
+          app.drop("trash", selectedIds());
+          return true;
+        }
+        return false;
+      }
+    };
+
+    /* ----- group menu ----- */
+
+    function groupOwning(ids) {
+      if (!ids.length) return null;
+      const set = new Set(ids);
+      for (const [gid, list] of app.state.members) {
+        if (list.length === set.size && list.every(id => set.has(id))) return gid;
+      }
+      return null;
+    }
+
+    menu.addEventListener("contextmenu", event => {
+      const tile = event.target.closest(".ph[data-id]");
+      if (!tile || !menu.contains(tile)) return;
+      event.preventDefault();
+      app.preview(Number(tile.dataset.id));
+    });
+
+    app.enableDrag(menu, {
+      selector: ".gcard:not(.trashcard), .ph[data-id]",
+      doubleClickPreview: false,
+      getIds(source) {
+        if (source.classList.contains("gcard")) {
+          const gid = Number(String(source.dataset.drop || "").replace("g:", ""));
+          return (app.state.members.get(gid) || []).slice();
+        }
+        return [Number(source.dataset.id)];
+      },
+      onClick(source) {
+        // Group cards are dragged; Focus/Delete are separate buttons.
+        // Photos open on right-click only; left-click is for drag.
+        return true;
+      },
+      onDrop(dest, ids) {
+        const gid = groupOwning(ids);
+        if (gid == null) return false;
+        if (dest === "g:" + gid || dest === "new") return true;
+        const src = app.store.group(gid);
+        if (!src) return false;
+        let destLoc = dest === "trash" ? FS.TRASH : dest === "pool" ? FS.POOL : null;
+        let label = "";
+        if (destLoc === FS.TRASH) label = `Discarded ${src.name}`;
+        else if (destLoc === FS.POOL) label = `Returned ${src.name} to the queue`;
+        else if (String(dest).startsWith("g:")) {
+          destLoc = Number(String(dest).replace("g:", ""));
+          const other = app.store.group(destLoc);
+          if (!other) return true;
+          label = `Merged ${src.name} into ${other.name}`;
+        } else {
+          return false;
+        }
+        app.store.commit(label, () => {
+          app.store.place(ids, destLoc);
+          app.store.groups = app.store.groups.filter(g => g.id !== gid);
+        });
+        app.toast(label, {undo: true});
+        return true;
+      }
+    });
+    menu.addEventListener("pointerenter", () => { menuHover = true; });
+    menu.addEventListener("pointerleave", () => {
+      menuHover = false;
+      // Rebuilding on leave makes the panel jump when scrolled to Discarded. Only
+      // rebuild when hover was actually freezing a live similarity order.
+      if (app.drag) return;
+      const state = app.state;
+      if (!state || !state.pool.length) return;
+      if (focusGroup != null || groupSort !== "similarity" || groupFilter.trim()) return;
+      if (!activeRefIds().length) return;
+      scheduleMenu();
+    });
+
+    function runPinnedMenu(pinId, mutate) {
+      pinGroupId = pinId;
+      mutate();
+      renderMenu(app.state);
+      holdOrder = false;
+      pinGroupId = null;
+    }
+
+    function applyFocusToQueue() {
+      if (!app.state) return;
+      wipeSelection();
+      computeQueue(app.state);
+      renderQueue(app.state);
+    }
+
+    function setGroupFocus(gid) {
+      runPinnedMenu(gid, () => {
+        if (focusGroup == null) preFocusOrder = menuOrder.slice();
+        focusGroup = gid;
+        const at = menuOrder.indexOf(gid);
+        focusIndex = at >= 0 ? at : 0;
+        menuOrder = [];
+      });
+      applyFocusToQueue();
+    }
+
+    function releaseGroupFocus() {
+      focusGroup = null;
+      menuOrder = preFocusOrder && preFocusOrder.length ? preFocusOrder.slice() : menuOrder.slice();
+      preFocusOrder = null;
+      holdOrder = true;
+    }
+
+    function clearGroupFocus(pinId = focusGroup) {
+      runPinnedMenu(pinId, releaseGroupFocus);
+      applyFocusToQueue();
+    }
+
+    menu.addEventListener("click", event => {
+      if (focusGroup == null) return;
+      if (event.target.closest(".gcard, .zone, button, input, a, .more")) return;
+      clearGroupFocus();
+    });
+
+    const groupsMenu = makeMenu({
+      title: "Sort and find groups",
+      label: GROUP_SORT_META.similarity,
+      wrap: false,
+      onButton() {
+        if (focusGroup == null) return false;
+        clearGroupFocus();
+        return true;
+      },
+      onOpen(panel) {
+        const find = panel.querySelector(".gmenu-find");
+        if (find) {
+          find.focus();
+          find.select();
+        }
+      },
+      fill() {
+        const find = el("input", {
+          class: "gmenu-find",
+          type: "search",
+          placeholder: "Find group…",
+          value: groupFilter,
+          "aria-label": "Find group by name"
+        });
+        find.addEventListener("input", () => {
+          groupFilter = find.value;
+          menuOrder = [];
+          scheduleMenu();
+        });
+        find.addEventListener("keydown", event => {
+          event.stopPropagation();
+          if (event.key !== "Escape") return;
+          event.preventDefault();
+          groupsMenu.close();
+        });
+        find.addEventListener("click", event => event.stopPropagation());
+        return [
+          find,
+          el("div", {class: "gmenu-label", text: "Order"}),
+          ...GROUP_SORTS.map(([id, text]) => el("button", {
+            class: "gmenu-opt" + (groupSort === id ? " active" : ""),
+            type: "button",
+            text,
+            onclick: event => {
+              event.stopPropagation();
+              if (groupSort === id) return;
+              groupSort = id;
+              focusGroup = null;
+              preFocusOrder = null;
+              menuOrder = [];
+              groupsMenu.fill();
+              const again = groupsMenu.panel.querySelector(".gmenu-find");
+              if (again) {
+                again.value = groupFilter;
+                again.focus();
+              }
+              scheduleMenu();
+            }
+          }))
+        ];
+      }
+    });
+    const groupSizeInput = el("input", {
+      type: "range",
+      min: String(GROUP_SIZE_RANGE[0]),
+      max: String(GROUP_SIZE_RANGE[1]),
+      step: "5",
+      value: String(prefs.groupSize),
+      "aria-label": "Group photo size"
+    });
+    const groupSizeField = el("label", {
+      class: "fs-field size-field",
+      title: "Target size for photos in groups"
+    }, "Size", groupSizeInput);
+    // Thumb height updates immediately. The two-row sample rebuilds on the next frame,
+    // without the reorder animation, so the cards stay about two rows while dragging.
+    let menuResizeOnly = false;
+    groupSizeInput.addEventListener("input", () => {
+      prefs.groupSize = Number(groupSizeInput.value);
+      applyGroupMetrics();
+      menuResizeOnly = true;
+      scheduleMenu();
+    });
+    groupSizeInput.addEventListener("change", () => {
+      prefs.groupSize = Number(groupSizeInput.value);
+      applyGroupMetrics();
+      savePrefs();
+      menuResizeOnly = true;
+      scheduleMenu();
+    });
+
+    const groupRowsLabelText = id => (GROUP_ROWS_CHOICES.find(([value]) => value === id) || GROUP_ROWS_CHOICES[1])[1];
+    const rowsMenu = makeMenu({
+      title: "Max rows of photos per group",
+      label: groupRowsLabelText(prefs.groupRows),
+      fill() {
+        return [
+          el("div", {class: "gmenu-label", text: "Rows"}),
+          ...GROUP_ROWS_CHOICES.map(([id, text]) => el("button", {
+            class: "gmenu-opt" + (prefs.groupRows === id ? " active" : ""),
+            type: "button",
+            text,
+            onclick: event => {
+              event.stopPropagation();
+              rowsMenu.close();
+              if (prefs.groupRows === id) return;
+              prefs.groupRows = id;
+              rowsMenu.label.textContent = text;
+              savePrefs();
+              scheduleMenu();
+            }
+          }))
+        ];
+      }
+    });
+
+    const syncGroupControls = () => {
+      groupSizeInput.value = String(prefs.groupSize);
+      rowsMenu.label.textContent = groupRowsLabelText(prefs.groupRows);
+    };
+    mbar.replaceChildren(
+      el("b", {text: "Groups"}),
+      groupsMenu.button,
+      rowsMenu.root,
+      groupSizeField
+    );
+    mbar.parentElement.append(groupsMenu.panel);
+
+    function syncGroupsMeta(filtering = Boolean(groupFilter.trim())) {
+      const focused = focusGroup != null;
+      groupsMenu.button.classList.toggle("focused", focused);
+      if (focused) {
+        const focusName = app.store.group(focusGroup)?.name || "focused group";
+        groupsMenu.label.textContent = `Focused on ${focusName}`;
+        groupsMenu.button.title = "Click to restore previous group and unsorted order";
+        groupsMenu.close();
+      } else {
+        groupsMenu.label.textContent = filtering
+          ? `Filter · ${GROUP_SORT_META[groupSort]}`
+          : GROUP_SORT_META[groupSort];
+        groupsMenu.button.title = "Sort and find groups";
+      }
+    }
+
+    function scheduleMenu() {
+      if (menuRaf) return;
+      menuRaf = requestAnimationFrame(() => { menuRaf = 0; renderMenu(app.state); });
+    }
+
+    function emptyLast(a, b) {
+      const ea = !a.members.length;
+      const eb = !b.members.length;
+      if (ea !== eb) return ea ? 1 : -1;
+      return 0;
+    }
+
+    function applyGroupSort(rows) {
+      if (groupSort === "similarity" || focusGroup != null) return rows;
+      const copy = rows.slice();
+      if (groupSort === "name-asc") {
+        copy.sort((a, b) => emptyLast(a, b) || nameCmp(a, b) || (a.id - b.id));
+      } else if (groupSort === "name-desc") {
+        copy.sort((a, b) => emptyLast(a, b) || nameCmp(b, a) || (a.id - b.id));
+      } else if (groupSort === "largest") {
+        copy.sort((a, b) => emptyLast(a, b) || (app.photoCountAll(b.members) - app.photoCountAll(a.members)) || nameCmp(a, b) || (a.id - b.id));
+      } else if (groupSort === "smallest") {
+        copy.sort((a, b) => emptyLast(a, b) || (app.photoCountAll(a.members) - app.photoCountAll(b.members)) || nameCmp(a, b) || (a.id - b.id));
+      }
+      return copy;
+    }
+
+    function applyGroupFilter(rows) {
+      const q = groupFilter.trim().toLowerCase();
+      if (!q) return rows;
+      return rows.filter(row => row.id === focusGroup || row.group.name.toLowerCase().includes(q));
+    }
+
+    // Size is the target thumb height. The row uses the whole card: column
+    // count is chosen near that size, then every column shares the width.
+    function contentWidth() {
+      return Math.max(40, menu.clientWidth - 42);
+    }
+    function sizing() {
+      const preferred = Math.max(1, prefs.groupSize);
+      const w = contentWidth();
+      const ar = app.ds.aspect > 0 ? app.ds.aspect : 1;
+      const gap = 4;
+      const preferredW = Math.max(1, preferred * ar);
+      const cols = Math.max(1, Math.round((w + gap) / (preferredW + gap)));
+      const thumbW = Math.max(1, (w - (cols - 1) * gap) / cols);
+      const rows = prefs.groupRows === "all" ? Infinity : Math.max(1, prefs.groupRows);
+      return {mt: thumbW / ar, cols, limit: cols * rows};
+    }
+    function applyGroupMetrics() {
+      const size = sizing();
+      menu.style.setProperty("--cols", String(size.cols));
+      menu.style.setProperty("--mt", size.mt + "px");
+      return size;
+    }
+
+    function spreadPairs(gid, list) {
+      const hit = exampleCache.get(gid);
+      if (hit && hit.version === app.store.version) return hit.pairs;
+      // Two passes find the ends of the group, then one sort places every photo
+      // along that span. Cached until the group changes, so redraws stay cheap.
+      const pairs = buildSpreadPairs(list);
+      exampleCache.set(gid, {version: app.store.version, pairs});
+      return pairs;
+    }
+
+    function buildSpreadPairs(list) {
+      const count = list.length;
+      if (count <= 1) return list.map(id => [id, 0]);
+      let origin = list[0];
+      for (let i = 1; i < count; i += 1) if (list[i] < origin) origin = list[i];
+      const farthest = from => {
+        let best = from;
+        let bestD = -1;
+        const row = from * n;
+        for (let i = 0; i < count; i += 1) {
+          const id = list[i];
+          if (id === from) continue;
+          const d = D[row + id];
+          if (d > bestD || (d === bestD && id < best)) {
+            bestD = d;
+            best = id;
+          }
+        }
+        return best;
+      };
+      const endA = farthest(origin);
+      const endB = farthest(endA);
+      const rowA = endA * n;
+      const rowB = endB * n;
+      const pairs = new Array(count);
+      for (let i = 0; i < count; i += 1) {
+        const id = list[i];
+        const da = id === endA ? 0 : D[rowA + id];
+        const db = id === endB ? 0 : D[rowB + id];
+        pairs[i] = [id, da - db];
+      }
+      pairs.sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+      return pairs;
+    }
+
+    function sampleSpread(pairs, k) {
+      const count = pairs.length;
+      if (count <= k) return pairs.map(pair => pair[0]);
+      const lo = pairs[0][1];
+      const hi = pairs[count - 1][1];
+      if (!(hi > lo)) return sample(pairs.map(pair => pair[0]), k);
+      if (k <= 1) {
+        const mid = (lo + hi) / 2;
+        let best = 0;
+        let bestD = Infinity;
+        for (let i = 0; i < count; i += 1) {
+          const d = Math.abs(pairs[i][1] - mid);
+          if (d < bestD) { bestD = d; best = i; }
+        }
+        return [pairs[best][0]];
+      }
+      const out = new Array(k);
+      let prev = -1;
+      let cursor = 0;
+      for (let i = 0; i < k; i += 1) {
+        const target = lo + (i / (k - 1)) * (hi - lo);
+        while (cursor + 1 < count && pairs[cursor + 1][1] <= target) cursor += 1;
+        let pick = cursor;
+        if (cursor > 0 && (target - pairs[cursor - 1][1]) < (pairs[cursor][1] - target)) pick = cursor - 1;
+        const room = count - 1 - (k - 1 - i);
+        if (pick > room) pick = room;
+        if (pick <= prev) pick = prev + 1;
+        out[i] = pairs[pick][0];
+        prev = pick;
+        cursor = pick;
+      }
+      return out;
+    }
+
+    function middleOut(ids, pairs) {
+      if (ids.length <= 1) return ids.slice();
+      const score = new Map(pairs.map(pair => [pair[0], pair[1]]));
+      const mid = (pairs[0][1] + pairs[pairs.length - 1][1]) / 2;
+      return ids.slice().sort((a, b) => {
+        const da = Math.abs(score.get(a) - mid);
+        const db = Math.abs(score.get(b) - mid);
+        return da - db || score.get(a) - score.get(b) || a - b;
+      });
+    }
+
+    function thumbs(list, limit, open, onToggle, pairs = null) {
+      const slots = Math.max(1, limit);
+      const shown = pairs
+        ? (open || list.length <= slots ? pairs.map(pair => pair[0]) : middleOut(sampleSpread(pairs, slots), pairs))
+        : (open ? list : list.slice(0, slots));
+      const extra = Math.max(0, list.length - shown.length);
+      const nodes = shown.map(id => app.tile(id, "menu"));
+      if (extra > 0 && nodes.length) {
+        const last = nodes[nodes.length - 1];
+        nodes[nodes.length - 1] = el("div", {class: "ph-wrap"},
+          last,
+          el("button", {
+            class: "more-badge",
+            type: "button",
+            text: `+${extra}`,
+            title: "Show all",
+            onclick: event => { event.stopPropagation(); onToggle(); }
+          }));
+      }
+      return el("div", {class: "grid"},
+        nodes,
+        open && list.length > limit
+          ? el("div", {class: "more-less-row"},
+              el("button", {
+                class: "btn small ghost more-less",
+                type: "button",
+                text: "Show less",
+                title: "Show fewer",
+                onclick: event => { event.stopPropagation(); onToggle(); }
+              }))
+          : null);
+    }
+
+    function nameInput(gid) {
+      const input = el("input", {class: "fs-name", type: "text", maxlength: "32", spellcheck: "false", title: "Click to rename"});
+      input.addEventListener("input", () => {
+        const clean = FS.sanitizeName(input.value);
+        if (clean !== input.value) input.value = clean;
+      });
+      input.addEventListener("change", () => app.renameGroup(gid, input.value));
+      input.addEventListener("keydown", e => {
+        if (e.key === "Enter" || e.key === "Escape") {
+          if (e.key === "Escape") input.value = app.store.group(gid)?.name || "";
+          input.blur();
+        }
+      });
+      return input;
+    }
+
+    function card(row, size) {
+      let entry = cards.get(row.id);
+      if (!entry) {
+        entry = {root: el("div", {class: "gcard", "data-drop": "g:" + row.id})};
+        entry.input = nameInput(row.id);
+        cards.set(row.id, entry);
+      }
+      const g = row.group;
+      if (document.activeElement !== entry.input) entry.input.value = g.name;
+      entry.input.classList.toggle("dup", app.duplicateNames().has(g.name.trim().toLowerCase()));
+      entry.root.classList.toggle("focus", row.id === focusGroup);
+      const pairs = spreadPairs(row.id, row.members);
+      const open = expanded.has(row.id);
+      const toggle = () => { if (open) expanded.delete(row.id); else expanded.add(row.id); renderMenu(app.state); };
+      const gathering = row.id === focusGroup;
+      const gatherBtn = el("button", {
+        class: "btn small ghost gather",
+        type: "button",
+        text: gathering ? "Unfocus" : "Focus",
+        title: gathering
+          ? "Restore previous group and unsorted order"
+          : "Focus this group, pull similar groups around it, and order Unsorted by similarity",
+        onclick: event => {
+          event.stopPropagation();
+          if (gathering) clearGroupFocus(row.id);
+          else setGroupFocus(row.id);
+        }
+      });
+      entry.root.replaceChildren(...FS.nodes(
+        el("div", {class: "head"},
+          el("span", {class: "grip", title: "Drag to merge", text: "⠿", "aria-hidden": "true"}),
+          entry.input,
+          gatherBtn,
+          el("button", {class: "btn small ghost del", type: "button", text: "Delete", title: "Delete group (photos go back to the queue)", onclick: () => app.deleteGroup(row.id)}),
+          el("span", {class: "num", text: String(app.photoCountAll(row.members))})),
+        row.members.length ? thumbs(row.members, size.limit, open, toggle, pairs) : el("div", {class: "empty", text: "Empty. Drop photos here."})));
+      return entry.root;
+    }
+
+    function renderMenu(state) {
+      if (!state) return;
+      const size = applyGroupMetrics();
+      const doneSorting = !state.pool.length;
+      if (focusGroup != null && !(state.members.get(focusGroup) || []).length) {
+        releaseGroupFocus();
+        applyFocusToQueue();
+      }
+      let ranked = null;
+      if (focusGroup != null) {
+        const ref = groupSample(state.members.get(focusGroup) || []);
+        const similarity = app.rankWith(ref, state.members);
+        const focused = similarity.find(r => r.id === focusGroup);
+        // focusIndex is the card's place in the filtered list, so hidden groups must not take slots.
+        const others = applyGroupFilter(similarity.filter(r => r.id !== focusGroup));
+        if (focused) {
+          focused.dist = Infinity;
+          // Keep the focused group where it was; nearest matches sit beside it.
+          const idx = Math.max(0, Math.min(focusIndex, others.length));
+          const above = others.slice(0, idx).reverse();
+          const below = others.slice(idx);
+          ranked = [...above, focused, ...below];
+        } else {
+          releaseGroupFocus();
+          applyFocusToQueue();
+        }
+      }
+      if (ranked == null) {
+        ranked = doneSorting ? orderGroupsBySimilarity(state) : app.rankWith(reference(), state.members);
+      }
+      ranked = applyGroupSort(ranked);
+      const totalGroups = ranked.length;
+      // With nothing selected (and nothing mid-drag), keep the closest group to the first unsorted photo on top.
+      const refIds = activeRefIds();
+      const followQueue = focusGroup == null && !doneSorting && groupSort === "similarity" && !refIds.length;
+      let rows;
+      const holdForDrag = Boolean(app.drag);
+      // holdOrder is the order from before Focus. It wins for this render, including when
+      // nothing is selected. Hover and drag still freeze only while a selection is ranking groups.
+      const keepOrder = (holdOrder || ((menuHover || holdForDrag) && !followQueue))
+        && menuOrder.length && groupSort === "similarity" && !groupFilter.trim();
+      if (keepOrder) {
+        const pos = new Map(menuOrder.map((id, i) => [id, i]));
+        rows = ranked.slice().sort((a, b) => (pos.has(a.id) ? pos.get(a.id) : -1) - (pos.has(b.id) ? pos.get(b.id) : -1));
+      } else {
+        rows = ranked;
+      }
+      rows = applyGroupFilter(rows);
+      menuOrder = rows.map(r => r.id);
+      holdOrder = false;
+      const live = new Set(menuOrder);
+      for (const id of [...cards.keys()]) if (!live.has(id)) cards.delete(id);
+      const nodes = rows.map(row => card(row, size));
+      const trashList = state.trash;
+      const trashCard = trashList.length ? el("div", {class: "gcard trashcard", "data-drop": "trash"},
+        el("div", {class: "head"},
+          el("b", {style: "flex:1", text: "Discarded"}),
+          el("span", {class: "num", text: String(app.photoCountAll(trashList))}),
+          el("button", {class: "btn small ghost", type: "button", text: "Restore all", onclick: () => app.drop("pool", trashList)})),
+        thumbs(trashList, size.limit, trashOpen, () => { trashOpen = !trashOpen; renderMenu(app.state); })) : null;
+      const focusName = focusGroup != null ? (app.store.group(focusGroup)?.name || "this group") : "";
+      const filtering = Boolean(groupFilter.trim());
+      const title = !totalGroups ? "No groups yet"
+        : filtering && !rows.length ? "No groups match that name"
+        : focusGroup != null ? `Similar groups around ${focusName}`
+        : groupSort !== "similarity" ? GROUP_SORT_META[groupSort]
+        : doneSorting ? "Similar groups sit together - use Focus on a group to pull matches around it"
+        : refIds.length ? "Closest to your selection" : "Closest to the start of the queue";
+      const nSel = app.photoCountAll(selectedIds());
+      syncGroupsMeta(filtering);
+      const scroll = menu.scrollTop;
+      const maxScroll = menu.scrollHeight - menu.clientHeight;
+      const stickBottom = maxScroll > 2 && scroll >= maxScroll - 2;
+      const pinId = pinGroupId != null ? pinGroupId : focusGroup;
+      const pin = pinId != null
+        ? menu.querySelector(`.gcard[data-drop="g:${pinId}"]`)
+        : null;
+      const pinTop = pin ? pin.getBoundingClientRect().top : null;
+      const resizeOnly = menuResizeOnly;
+      menuResizeOnly = false;
+      const paintMenu = () => {
+        menu.replaceChildren(...FS.nodes(
+          doneSorting ? null : el("div", {class: "zones"},
+            el("div", {class: "zone trash", "data-drop": "trash", onclick: () => {
+              const ids = selectedIds();
+              if (!ids.length) return;
+              wipeSelection();
+              app.drop("trash", ids);
+            }},
+              "Discard", el("small", {text: `${state.counts.trash} so far`})),
+            el("div", {class: "zone new", "data-drop": "new", onclick: () => { if (selectedIds().length) commitSelection(); }},
+              "+ New group", el("small", {text: nSel ? `click or drop ${nSel} photos` : "select a run, then click it"}))),
+          el("h3", {text: title}),
+          ...nodes,
+          doneSorting ? null : el("div", {class: "menu-newdrop", "data-drop": "new"},
+            totalGroups ? null : el("div", {class: "empty", text: "Click the first photo of a run and drag to the last, then release. Click the most recently selected photo again to make a group, or drag the selection here."})),
+          trashCard));
+        // Adjust scroll before FLIP measures "after" positions so the pinned card stays put.
+        if (stickBottom) {
+          menu.scrollTop = menu.scrollHeight;
+        } else if (pinTop != null && pinId != null) {
+          const again = menu.querySelector(`.gcard[data-drop="g:${pinId}"]`);
+          if (again) menu.scrollTop += again.getBoundingClientRect().top - pinTop;
+          else menu.scrollTop = scroll;
+        } else {
+          menu.scrollTop = scroll;
+        }
+      };
+      if (resizeOnly) paintMenu();
+      else FS.flip(() => menu.querySelectorAll(".gcard:not(.trashcard)"), paintMenu);
+    }
+
+    /* ----- resizable menu ----- */
+
+    const MENU_MIN = 250;
+    function menuMaxWidth() {
+      return Math.max(MENU_MIN, window.innerWidth - MENU_MIN - splitter.offsetWidth);
+    }
+    function applyWidth() {
+      const preferred = Number(prefs.menuWidth);
+      const width = Math.round(Math.min(menuMaxWidth(), Math.max(MENU_MIN, Number.isFinite(preferred) ? preferred : PREF_DEFAULTS.menuWidth)));
+      qapp.style.setProperty("--mw", width + "px");
+    }
+    applyWidth();
+    splitter.addEventListener("pointerdown", event => {
+      event.preventDefault();
+      splitter.classList.add("active");
+      const left = qapp.getBoundingClientRect().left;
+      const move = ev => {
+        prefs.menuWidth = Math.round(Math.min(menuMaxWidth(), Math.max(MENU_MIN, ev.clientX - left)));
+        applyWidth();
+        applyGroupMetrics();
+        menuResizeOnly = true;
+        scheduleMenu();
+      };
+      const up = () => {
+        splitter.classList.remove("active");
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+        savePrefs();
+        scheduleMenu();
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+    });
+    splitter.addEventListener("dblclick", () => { prefs.menuWidth = PREF_DEFAULTS.menuWidth; applyWidth(); savePrefs(); scheduleMenu(); });
+    window.addEventListener("resize", () => {
+      applyWidth();
+      applyGroupMetrics();
+      menuResizeOnly = true;
+      scheduleMenu();
+    });
+
+    /* ----- header ----- */
+
+    function applyGaps() {
+      for (const node of tilesBox.querySelectorAll(".gap-break[data-gap]")) {
+        const t = Number(node.dataset.gap) || 0;
+        node.style.width = gapWidth(t) + "px";
+      }
+    }
+    app.cfg.onZoom = applyGaps;
+
+    const fitLabelText = id => (FIT_MODES.find(([mode]) => mode === id) || FIT_MODES[0])[1];
+    const fitMenu = makeMenu({
+      title: "Lock aspect keeps each photo's shape. Stretch resizes every photo to one common frame",
+      label: fitLabelText(prefs.fit),
+      fill() {
+        return [
+          el("div", {class: "gmenu-label", text: "Preview"}),
+          ...FIT_MODES.map(([id, text]) => el("button", {
+            class: "gmenu-opt" + (prefs.fit === id ? " active" : ""),
+            type: "button",
+            text,
+            onclick: event => {
+              event.stopPropagation();
+              fitMenu.close();
+              if (prefs.fit === id) return;
+              prefs.fit = id;
+              fitMenu.label.textContent = text;
+              applyFit();
+              savePrefs();
+            }
+          }))
+        ];
+      }
+    });
+
+    function syncBreaksBtn() {
+      breaksBtn.classList.toggle("is-on", prefs.breaks);
+      breaksBtn.setAttribute("aria-pressed", prefs.breaks ? "true" : "false");
+    }
+    const breaksBtn = el("button", {
+      class: "groups-meta",
+      type: "button",
+      text: "Identity breaks",
+      title: "Leave space in Unsorted where one identity ends and the next begins",
+      onclick: () => {
+        prefs.breaks = !prefs.breaks;
+        syncBreaksBtn();
+        savePrefs();
+        renderQueue(app.state);
+      }
+    });
+    syncBreaksBtn();
+    app.extraSlot.replaceChildren(fitMenu.root, breaksBtn);
+
+    function resetSettings() {
+      Object.assign(prefs, PREF_DEFAULTS);
+      delete prefs.gapScale;
+      delete prefs.photoZoom;
+      savePrefs();
+      queueMenu.close();
+      fitMenu.close();
+      rowsMenu.close();
+      fitMenu.label.textContent = fitLabelText(prefs.fit);
+      applyFit();
+      syncBreaksBtn();
+      applyGaps();
+      applyWidth();
+      syncGroupControls();
+      scheduleMenu();
+      app.zoom = ZOOM_DEFAULT;
+      document.documentElement.style.setProperty("--tile", app.zoom + "px");
+      if (sizeInput) sizeInput.value = String(app.zoom);
+      try {
+        const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
+        saved.zoom = app.zoom;
+        // Bbox preview toggles: Current on, Others off.
+        saved.lightboxCurrentBox = true;
+        saved.lightboxOtherBoxes = false;
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(saved));
+      } catch (err) { /* ignore */ }
+    }
+
+    const resetSettingsBtn = el("button", {
+      class: "btn",
+      type: "button",
+      text: "Reset settings",
+      title: "Restore view settings to the default",
+      onclick: () => {
+        resetSettings();
+        app.update("settings");
+      }
+    });
+    const startOverBtn = el("button", {
+      class: "btn",
+      type: "button",
+      text: "Start over",
+      title: "Clear every group, reset settings, and put all photos back in the queue",
+      onclick: () => {
+        if (window.confirm("Clear every group, reset settings, and start over?")) {
+          wipeSelection();
+          resetSettings();
+          app.startOver();
+        }
+      }
+    });
+    const stats = document.querySelector(".fs-stats");
+    if (stats) stats.after(startOverBtn, resetSettingsBtn);
+    else app.extraSlot.append(startOverBtn, resetSettingsBtn);
+
+    app.render = (state, kind) => {
+      if (kind === "selection") return;
+      if (press) cancelPress();
+      const keepIds = kind === "settings" ? selectedIds() : null;
+      wipeSelection();
+      if (state && focusGroup != null && !(state.members.get(focusGroup) || []).length) releaseGroupFocus();
+      computeQueue(state);
+      if (keepIds) restoreKeptSelection(keepIds);
+      renderQueue(state);
+      renderMenu(state);
+    };
+  }
+});
+})();
