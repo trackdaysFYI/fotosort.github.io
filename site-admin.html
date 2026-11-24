@@ -44,7 +44,12 @@
     .pill.edit {background: #35506e;}
     .pill.delete {background: #6e3a35;}
     .pill.create {background: #355e48;}
+    .pill.track {background: #355e48;}
+    .pill.missing_event {background: #35506e;}
+    .grid {display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;}
+    @media (max-width: 900px) {.grid {grid-template-columns: 1fr;}}
     .empty {padding: 1rem 0.9rem; color: var(--muted);}
+
     form.stack {display: flex; flex-direction: column; gap: 0.7rem; max-width: 42rem;}
     label.field {display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.72rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted);}
     input, select, textarea {width: 100%; border: 1px solid var(--line); border-radius: 8px; background: #1c2024; color: var(--text); font: inherit; font-size: 0.92rem; padding: 0.45rem 0.6rem; letter-spacing: 0; text-transform: none;}
@@ -79,7 +84,8 @@
     <div class="top">
       <div>
         <h1><a id="home-link" style="color: inherit; text-decoration: none;">Site Admin</a></h1>
-        <div class="muted">Review console · lap records</div>
+        <div class="muted">Review console · lap records &amp; suggestions</div>
+
       </div>
       <div class="actions">
         <button class="btn-ghost" id="refresh-btn" type="button">Refresh</button>
@@ -145,12 +151,17 @@
       if (view === "event" && rest.length >= 1) {
         return {view: "event", eventId: decodeURIComponent(rest[0])};
       }
+      if (view === "suggestion" && rest.length >= 1) {
+        return {view: "suggestion", suggestionId: decodeURIComponent(rest[0])};
+      }
       return {view: "queue"};
     }
 
     function setRoute(next) {
       if (next.view === "event") {
         location.hash = `event/${encodeURIComponent(next.eventId)}`;
+      } else if (next.view === "suggestion") {
+        location.hash = `suggestion/${encodeURIComponent(next.suggestionId)}`;
       } else {
         location.hash = "queue";
       }
@@ -174,13 +185,13 @@
       $("denied").classList.remove("hidden");
     }
 
-    async function api(action, payload) {
+    async function api(resource, action, payload) {
       // Match console.html: Authorization only — do not set Content-Type
       // (application/json forces a preflight that APIGW CORS may reject).
       const response = await fetch(`${API_BASE}/siteAdmin`, {
         method: "POST",
         headers: {"Authorization": `Bearer ${accessToken}`},
-        body: JSON.stringify({resource: "lapRecords", action, ...payload}),
+        body: JSON.stringify({resource, action, ...payload}),
       });
       let data = null;
       const text = await response.text();
@@ -256,13 +267,31 @@
       };
     }
 
+    function suggestionTitle(item) {
+      if (item.kind === "track") return item.name || "—";
+      return item.trackName || item.track || "—";
+    }
+
+    function suggestionDetail(item) {
+      if (item.kind === "track") {
+        const types = item.vehicleTypes ? ` · vehicles ${item.vehicleTypes}` : "";
+        return (item.url || "—") + types;
+      }
+      const parts = [item.org, item.eventType, item.date || (item.multipleDates ? "multiple dates" : "")].filter(Boolean);
+      return parts.join(" · ") || "—";
+    }
+
     async function renderQueue() {
       const view = $("view");
-      view.innerHTML = `<p class="muted">Loading queue…</p>`;
+      view.innerHTML = `<p class="muted">Loading queues…</p>`;
       try {
-        const data = await api("listQueue", {});
-        const events = data.events || [];
-        const rows = events.length ? events.map((item) => {
+        const [lapData, suggestionData] = await Promise.all([
+          api("lapRecords", "listQueue", {}),
+          api("suggestions", "listQueue", {}),
+        ]);
+        const events = lapData.events || [];
+        const suggestions = suggestionData.suggestions || [];
+        const eventRows = events.length ? events.map((item) => {
           const summary = queueSummary(item);
           return `
           <tr>
@@ -276,23 +305,48 @@
             <td>${escapeHtml(item.note || "—")}</td>
             <td class="muted">${escapeHtml(item.submittedAt || "—")}</td>
           </tr>`;
-        }).join("") : `<tr><td colspan="6" class="empty">No pending events.</td></tr>`;
+        }).join("") : `<tr><td colspan="6" class="empty">No pending lap events.</td></tr>`;
+        const suggestionRows = suggestions.length ? suggestions.map((item) => `
+          <tr>
+            <td><span class="pill ${escapeHtml(item.kind || "")}">${escapeHtml(item.kind || "")}</span></td>
+            <td>
+              <a data-nav="suggestion" data-suggestion="${escapeHtml(item.suggestionId)}">${escapeHtml(suggestionTitle(item))}</a>
+              <div class="muted" style="font-size:0.78rem;">${escapeHtml(item.suggestionId || "")}</div>
+            </td>
+            <td>${escapeHtml(suggestionDetail(item))}</td>
+            <td>${escapeHtml(item.note || "—")}</td>
+            <td class="muted">${escapeHtml(item.createdAt || "—")}</td>
+          </tr>`).join("") : `<tr><td colspan="5" class="empty">No pending suggestions.</td></tr>`;
 
         view.innerHTML = `
-          <section class="card">
-            <div class="card-h">
-              <h2 style="margin:0;color:inherit;text-transform:none;letter-spacing:0;font-size:1rem;">Pending events</h2>
-              <span class="muted">${events.length}</span>
-            </div>
-            <div class="card-b">
-              <table>
-                <thead><tr><th>Action</th><th>Track / Record</th><th>Holder</th><th>Time</th><th>Note</th><th>Submitted</th></tr></thead>
-                <tbody>${rows}</tbody>
-              </table>
-            </div>
-          </section>`;
+          <div class="grid">
+            <section class="card">
+              <div class="card-h">
+                <h2 style="margin:0;color:inherit;text-transform:none;letter-spacing:0;font-size:1rem;">Lap record events</h2>
+                <span class="muted">${events.length}</span>
+              </div>
+              <div class="card-b">
+                <table>
+                  <thead><tr><th>Action</th><th>Track / Record</th><th>Holder</th><th>Time</th><th>Note</th><th>Submitted</th></tr></thead>
+                  <tbody>${eventRows}</tbody>
+                </table>
+              </div>
+            </section>
+            <section class="card">
+              <div class="card-h">
+                <h2 style="margin:0;color:inherit;text-transform:none;letter-spacing:0;font-size:1rem;">Suggestions</h2>
+                <span class="muted">${suggestions.length}</span>
+              </div>
+              <div class="card-b">
+                <table>
+                  <thead><tr><th>Kind</th><th>Title</th><th>Detail</th><th>Note</th><th>Submitted</th></tr></thead>
+                  <tbody>${suggestionRows}</tbody>
+                </table>
+              </div>
+            </section>
+          </div>`;
       } catch (err) {
-        view.innerHTML = `<div class="error">Unable to load queue: ${escapeHtml(err.message)}</div>`;
+        view.innerHTML = `<div class="error">Unable to load queues: ${escapeHtml(err.message)}</div>`;
       }
     }
 
@@ -300,7 +354,7 @@
       const view = $("view");
       view.innerHTML = `<p class="muted">Loading event…</p>`;
       try {
-        const data = await api("getItem", {eventId});
+        const data = await api("lapRecords", "getItem", {eventId});
         const eventItem = data.event || {};
         const current = data.current || {};
         const proposed = data.proposed || {};
@@ -377,7 +431,7 @@
             const payload = {eventId, reviewNote};
             if (isCreate || isEdit) payload.fields = fields;
             if (isDelete) payload.note = note;
-            const result = await api("acceptEvent", payload);
+            const result = await api("lapRecords", "acceptEvent", payload);
             showFlash(result.message || "Accepted.", "ok");
             setRoute({view: "queue"});
           } catch (err) {
@@ -388,8 +442,83 @@
           if (!confirm(isCreate ? "Reject this create?" : "Reject this event?")) return;
           const formData = formValues($("event-form"));
           try {
-            const result = await api("rejectEvent", {
+            const result = await api("lapRecords", "rejectEvent", {
               eventId,
+              reviewNote: formData.reviewNote || "",
+            });
+            showFlash(result.message || "Rejected.", "ok");
+            setRoute({view: "queue"});
+          } catch (err) {
+            showFlash(err.message, "err");
+          }
+        });
+      } catch (err) {
+        view.innerHTML = `<div class="error">${escapeHtml(err.message)}</div>
+          <button class="btn-ghost" type="button" data-nav="queue">Back to queue</button>`;
+      }
+    }
+
+    const SUGGESTION_KEYS = {
+      track: ["name", "url", "vehicleTypes", "note"],
+      missing_event: ["trackName", "track", "org", "date", "multipleDates", "eventType", "url", "note"],
+    };
+
+    async function renderSuggestion(suggestionId) {
+      const view = $("view");
+      view.innerHTML = `<p class="muted">Loading suggestion…</p>`;
+      try {
+        const data = await api("suggestions", "getItem", {suggestionId});
+        const suggestion = data.suggestion || {};
+        const kind = suggestion.kind || "";
+        const keys = SUGGESTION_KEYS[kind] || Object.keys(suggestion).filter((k) =>
+          !["suggestionId", "status", "createdAt", "sourceIp", "reviewedAt", "reviewNote", "kind"].includes(k)
+        );
+        view.innerHTML = `
+          <div class="actions" style="margin-bottom:1rem;">
+            <button class="btn-ghost" type="button" data-nav="queue">Back to queue</button>
+          </div>
+          <div class="meta">
+            <span class="pill ${escapeHtml(kind)}">${escapeHtml(kind)}</span>
+            · suggestion <code>${escapeHtml(suggestion.suggestionId)}</code>
+            · submitted ${escapeHtml(suggestion.createdAt || "—")}
+            ${suggestion.sourceIp ? ` · ip ${escapeHtml(suggestion.sourceIp)}` : ""}
+          </div>
+          <div class="snapshot" style="margin-bottom:1rem;">
+            <h3>Submitted fields</h3>
+            <div class="kv">${kvBlock(keys, suggestion, null)}</div>
+          </div>
+          <p class="muted" style="margin-bottom:1rem;">
+            Accept marks this reviewed. Apply track/event data in your normal content workflow — this API does not write live track/event tables.
+          </p>
+          <form class="stack" id="suggestion-form">
+            ${field("reviewNote", "Review note (optional)", "", "textarea")}
+            <div class="actions">
+              <button class="btn-accept" type="submit">Accept</button>
+              <button class="btn-reject" type="button" id="reject-suggestion">Reject</button>
+              <button class="btn-ghost" type="button" data-nav="queue">Cancel</button>
+            </div>
+          </form>`;
+
+        $("suggestion-form").addEventListener("submit", async (submitEvent) => {
+          submitEvent.preventDefault();
+          const formData = formValues(submitEvent.target);
+          try {
+            const result = await api("suggestions", "acceptSuggestion", {
+              suggestionId,
+              reviewNote: formData.reviewNote || "",
+            });
+            showFlash(result.message || "Accepted.", "ok");
+            setRoute({view: "queue"});
+          } catch (err) {
+            showFlash(err.message, "err");
+          }
+        });
+        $("reject-suggestion").addEventListener("click", async () => {
+          if (!confirm("Reject this suggestion?")) return;
+          const formData = formValues($("suggestion-form"));
+          try {
+            const result = await api("suggestions", "rejectSuggestion", {
+              suggestionId,
               reviewNote: formData.reviewNote || "",
             });
             showFlash(result.message || "Rejected.", "ok");
@@ -407,6 +536,7 @@
     async function render() {
       route = parseHash();
       if (route.view === "event") return renderEvent(route.eventId);
+      if (route.view === "suggestion") return renderSuggestion(route.suggestionId);
       return renderQueue();
     }
 
@@ -419,6 +549,8 @@
         if (nav === "queue") setRoute({view: "queue"});
         else if (nav === "event") {
           setRoute({view: "event", eventId: target.getAttribute("data-event")});
+        } else if (nav === "suggestion") {
+          setRoute({view: "suggestion", suggestionId: target.getAttribute("data-suggestion")});
         }
       });
       window.addEventListener("hashchange", () => {
@@ -457,7 +589,7 @@
       $("denied-logout").addEventListener("click", logout);
 
       try {
-        await api("listQueue", {});
+        await api("lapRecords", "listQueue", {});
       } catch (err) {
         if (err.status === 403) return;
         $("loading").textContent = "Unable to reach admin API: " + (err.message || String(err));
