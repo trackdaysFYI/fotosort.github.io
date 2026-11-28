@@ -588,17 +588,12 @@
       $("logout-btn").addEventListener("click", logout);
       $("denied-logout").addEventListener("click", logout);
 
-      try {
-        await api("lapRecords", "listQueue", {});
-      } catch (err) {
-        if (err.status === 403) return;
-        $("loading").textContent = "Unable to reach admin API: " + (err.message || String(err));
-        return;
-      }
-
       $("loading").classList.add("hidden");
       $("app").classList.remove("hidden");
-      if (!location.hash) location.hash = "queue";
+      // replaceState avoids a hashchange that would call render() a second time
+      if (!location.hash) {
+        history.replaceState(null, "", "#queue");
+      }
       bindNav();
       await render();
     }
